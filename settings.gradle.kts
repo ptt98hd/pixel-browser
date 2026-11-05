@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "pixel-browser"
 include(":app")
+include(":core:engine")
