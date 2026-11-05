@@ -5,6 +5,10 @@ updates:
     schedule: { interval: monthly }
     open-pull-requests-limit: 3
     commit-message: { prefix: "build(deps)" }
+    ignore:
+      # 4.17 breaks MainActivityTest (IllegalAccessException in AndroidInterceptors)
+      - dependency-name: "org.robolectric:robolectric"
+        versions: ["4.17"]
     groups:
       gradle-dependencies:
         patterns: ["*"]
