@@ -10,3 +10,4 @@ captures/
 keystore.properties
 .DS_Store
 .claude/settings.local.json
+.claude/worktrees/
