@@ -6,6 +6,8 @@ activityCompose = "1.13.0"
 coreKtx = "1.17.0"
 junit = "4.13.2"
 robolectric = "4.16"
+spotless = "8.11.0"
+ktlint = "1.8.0"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -22,3 +24,4 @@ robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectr
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }

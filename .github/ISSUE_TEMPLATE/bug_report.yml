@@ -1,0 +1,10 @@
+name: Báo lỗi
+description: Ứng dụng hoạt động sai
+labels: [bug]
+body:
+  - type: textarea
+    attributes: { label: Mô tả lỗi và các bước tái hiện }
+    validations: { required: true }
+  - type: input
+    attributes: { label: Thiết bị / phiên bản Android / phiên bản app / phiên bản WebView }
+    validations: { required: true }

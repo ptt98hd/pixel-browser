@@ -1,0 +1,7 @@
+name: Đề xuất tính năng
+description: Ý tưởng mới
+labels: [enhancement]
+body:
+  - type: textarea
+    attributes: { label: Vấn đề / nhu cầu và giải pháp đề xuất }
+    validations: { required: true }
