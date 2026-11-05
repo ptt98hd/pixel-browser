@@ -1,9 +1,11 @@
 package app.pixel.browser.core.engine
 
+import android.view.View
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -19,6 +21,12 @@ abstract class EngineSessionContractTest {
 
     /** Mô phỏng lỗi SSL. */
     protected abstract fun EngineSession.emitSslError()
+
+    /** Mô phỏng engine bắt đầu commit trang [url] (`onPageStarted`). */
+    protected abstract fun EngineSession.emitPageStarted(url: String)
+
+    /** View mà engine phải expose khi còn mở (spec 005): Fake → null, WebView → `webView`. */
+    protected abstract fun expectedView(session: EngineSession): View?
 
     private val url = "https://example.com/"
 
@@ -110,5 +118,136 @@ abstract class EngineSessionContractTest {
         s.reload()
         s.goBack()
         assertEquals(before, s.state.value)
+    }
+
+    // --- Spec 005: view, scroll, securityState khi tải xong ---
+
+    @Test
+    fun view_isEngineView_whileOpen() {
+        val s = createSession()
+        assertSame(expectedView(s), s.view)
+    }
+
+    @Test
+    fun view_isNull_afterClose() {
+        val s = createSession()
+        s.close()
+        assertNull(s.view)
+    }
+
+    @Test
+    fun scrollToTopAndBottom_doNotChangeState() {
+        val s = createSession()
+        s.loadUrl(url)
+        s.emitPageFinished(url)
+        val before = s.state.value
+        s.scrollToTop()
+        s.scrollToBottom()
+        assertEquals(before, s.state.value)
+    }
+
+    @Test
+    fun scroll_afterClose_isNoOp() {
+        val s = createSession()
+        s.loadUrl(url)
+        s.close()
+        val before = s.state.value
+        s.scrollToTop()
+        s.scrollToBottom()
+        assertEquals(before, s.state.value)
+    }
+
+    @Test
+    fun pageFinished_https_withoutSslError_isSecure() {
+        val s = createSession()
+        s.loadUrl(url)
+        assertEquals(SecurityState.Unknown, s.state.value.securityState)
+        s.emitPageFinished(url)
+        assertEquals(SecurityState.Secure, s.state.value.securityState)
+    }
+
+    @Test
+    fun pageFinished_http_isInsecure() {
+        val s = createSession()
+        s.loadUrl("http://example.com/")
+        s.emitPageFinished("http://example.com/")
+        assertEquals(SecurityState.Insecure, s.state.value.securityState)
+    }
+
+    @Test
+    fun pageFinished_https_afterSslError_staysInsecure() {
+        val s = createSession()
+        s.loadUrl(url)
+        s.emitSslError()
+        s.emitPageFinished(url)
+        assertEquals(SecurityState.Insecure, s.state.value.securityState)
+    }
+
+    @Test
+    fun sslError_doesNotLeakIntoNextLoad() {
+        val s = createSession()
+        s.loadUrl(url)
+        s.emitSslError()
+        s.emitPageFinished(url)
+        s.loadUrl("https://example.org/")
+        s.emitPageFinished("https://example.org/")
+        assertEquals(SecurityState.Secure, s.state.value.securityState)
+    }
+
+    @Test
+    fun pageFinished_aboutBlank_isUnknown() {
+        val s = createSession()
+        s.emitPageFinished("about:blank")
+        assertEquals(SecurityState.Unknown, s.state.value.securityState)
+    }
+
+    @Test
+    fun pageFinished_aboutBlank_afterSecurePage_resetsToUnknown() {
+        val s = createSession()
+        s.loadUrl(url)
+        s.emitPageFinished(url)
+        s.emitPageFinished("about:blank")
+        assertEquals(SecurityState.Unknown, s.state.value.securityState)
+    }
+
+    // --- Review spec 005: securityState khi trang bắt đầu, pause/resume ---
+
+    @Test
+    fun pageStarted_afterSecurePage_resetsToUnknown() {
+        val s = createSession()
+        s.loadUrl(url)
+        s.emitPageFinished(url)
+        assertEquals(SecurityState.Secure, s.state.value.securityState)
+        s.emitPageStarted("https://example.org/")
+        assertEquals(SecurityState.Unknown, s.state.value.securityState)
+    }
+
+    @Test
+    fun pageStarted_afterSslErrorInSameLoad_staysInsecure() {
+        val s = createSession()
+        s.loadUrl(url)
+        s.emitSslError()
+        s.emitPageStarted(url)
+        assertEquals(SecurityState.Insecure, s.state.value.securityState)
+    }
+
+    @Test
+    fun pauseAndResume_doNotChangeState() {
+        val s = createSession()
+        s.loadUrl(url)
+        s.emitPageFinished(url)
+        val before = s.state.value
+        s.onPause()
+        s.onResume()
+        assertEquals(before, s.state.value)
+    }
+
+    @Test
+    fun pauseAndResume_afterClose_areNoOps() {
+        val s = createSession()
+        s.close()
+        s.onPause()
+        s.onResume()
+        assertNull(s.view)
     }
 }

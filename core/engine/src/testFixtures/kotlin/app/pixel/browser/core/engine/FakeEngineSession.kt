@@ -1,5 +1,6 @@
 package app.pixel.browser.core.engine
 
+import android.view.View
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -9,6 +10,9 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.IOException
 
+/** Lệnh cuộn mà [FakeEngineSession] ghi lại (spec 005). */
+enum class ScrollCommand { Top, Bottom }
+
 /** Engine giả chạy trên JVM, tuân thủ cùng hợp đồng với [WebViewEngineSession]. */
 class FakeEngineSession : EngineSession {
     private val _state = MutableStateFlow(EngineState())
@@ -17,6 +21,8 @@ class FakeEngineSession : EngineSession {
     private val history = mutableListOf<String>()
     private var index = -1
     private var closed = false
+    private var sslErrorInLoad = false
+    private val _scrollCommands = mutableListOf<ScrollCommand>()
 
     val loadedUrls: List<String> get() = history.toList()
 
@@ -31,13 +37,14 @@ class FakeEngineSession : EngineSession {
 
     override fun loadUrl(url: String) {
         if (closed) return
-        if (!isValidWebUrl(url)) {
+        if (!isRestorableUrl(url)) {
             _state.update { it.copy(error = "Invalid URL: $url", isLoading = false) }
             return
         }
         // Lịch sử chỉ đổi khi trang commit (simulatePageFinished) — giống engine thật.
         pendingNavigation = Navigation.NewPage
         cacheMode = CacheMode.Default
+        sslErrorInLoad = false
         _state.update {
             it.copy(url = url, isLoading = true, progress = 0, error = null, securityState = SecurityState.Unknown)
         }
@@ -50,6 +57,7 @@ class FakeEngineSession : EngineSession {
     override fun goBack() {
         if (closed || index <= 0) return
         pendingNavigation = Navigation.Back
+        sslErrorInLoad = false
         cacheMode = CacheMode.CacheElseNetwork
         _state.update { it.copy(url = history[index - 1], isLoading = true, progress = 0) }
     }
@@ -57,6 +65,7 @@ class FakeEngineSession : EngineSession {
     override fun goForward() {
         if (closed || index >= history.lastIndex) return
         pendingNavigation = Navigation.Forward
+        sslErrorInLoad = false
         cacheMode = CacheMode.CacheElseNetwork
         _state.update { it.copy(url = history[index + 1], isLoading = true, progress = 0) }
     }
@@ -65,7 +74,41 @@ class FakeEngineSession : EngineSession {
         if (closed) return
         pendingNavigation = Navigation.Reload
         cacheMode = CacheMode.Default
+        sslErrorInLoad = false
         _state.update { it.copy(isLoading = true, progress = 0) }
+    }
+
+    /** Fake không có view thật (spec 005). */
+    override val view: View? get() = null
+
+    /** Các lệnh [scrollToTop]/[scrollToBottom] đã nhận, theo thứ tự (spec 005). */
+    val scrollCommands: List<ScrollCommand> get() = _scrollCommands.toList()
+
+    /** Trạng thái [onPause]/[onResume] gần nhất (review spec 005). */
+    var isPaused: Boolean = false
+        private set
+
+    override fun onPause() {
+        if (!closed) isPaused = true
+    }
+
+    override fun onResume() {
+        if (!closed) isPaused = false
+    }
+
+    /** Như `onPageStarted` của WebView: không đổi lịch sử; securityState về Unknown trừ khi đã có lỗi SSL. */
+    fun simulatePageStarted(url: String) {
+        if (closed) return
+        val security = if (sslErrorInLoad) SecurityState.Insecure else SecurityState.Unknown
+        _state.update { it.copy(url = url, isLoading = true, securityState = security) }
+    }
+
+    override fun scrollToTop() {
+        if (!closed) _scrollCommands += ScrollCommand.Top
+    }
+
+    override fun scrollToBottom() {
+        if (!closed) _scrollCommands += ScrollCommand.Bottom
     }
 
     override fun stopLoading() {
@@ -95,6 +138,7 @@ class FakeEngineSession : EngineSession {
         // Engine tải lại mục hiện tại (từ cache) mà không đổi lịch sử.
         pendingNavigation = Navigation.Reload
         cacheMode = CacheMode.CacheElseNetwork
+        sslErrorInLoad = false
         _state.update {
             it.copy(
                 url = history[index],
@@ -159,11 +203,14 @@ class FakeEngineSession : EngineSession {
         }
         pendingNavigation = Navigation.NewPage
         cacheMode = CacheMode.Default
+        val security = securityStateOnFinish(url, sslErrorInLoad)
+        sslErrorInLoad = false
         _state.update {
             it.copy(
                 url = url,
                 isLoading = false,
                 progress = 100,
+                securityState = security,
                 canGoBack = index > 0,
                 canGoForward = index < history.lastIndex,
             )
@@ -172,6 +219,7 @@ class FakeEngineSession : EngineSession {
 
     fun simulateSslError() {
         if (closed) return
+        sslErrorInLoad = true
         _state.update { it.copy(securityState = SecurityState.Insecure) }
     }
 

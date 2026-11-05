@@ -56,6 +56,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":feature:browser"))
     implementation(platform(libs.compose.bom))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
