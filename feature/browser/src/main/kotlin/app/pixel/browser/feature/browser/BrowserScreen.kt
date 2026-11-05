@@ -239,7 +239,15 @@ fun BrowserRoute(
                 onSelectTab = viewModel::onSelectTab,
                 onCloseTab = viewModel::onCloseTab,
                 onMessageShown = viewModel::onMessageShown,
-        remember(viewModel, context, shareTitle, setDefault, onThemeChange) {
+                onSetDefaultBrowser = setDefault,
+                onExternalAppDecision = { tabId, requestId, open ->
+                    viewModel.onExternalAppDecision(tabId, requestId, open)
+                },
+                onReturnToCaller = {
+                    viewModel.onReturnToCaller()
+                    returnToCaller()
+                },
+                onThemeChange = onThemeChange,
             )
         }
     BrowserScreen(state = state, actions = actions, modifier = modifier, themeSettings = themeSettings) {
