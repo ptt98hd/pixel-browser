@@ -10,9 +10,9 @@ Trạng thái: ⬜ chưa làm · 🟨 đang làm · ✅ xong. Mỗi feature có 
 | A02 | Quản lý nhiều tab, giữ state khi chuyển tab/xoay màn hình/process death | ✅ |
 | A03 | Back/forward không reload (giữ WebView + history, restore scroll) | ✅ |
 | A04 | Omnibox: nhập URL/tìm kiếm, chuẩn hóa URL, gợi ý (lịch sử/bookmark/search) | ✅ |
-| A05 | Top bar: thanh URL + nút scan QR, hiển thị domain/SSL, progress | 🟨 |
-| A06 | Bottom bar 5 nút: back / forward / home / tabs / menu | 🟨 |
-| A07 | Long-press: back→lên đầu, forward→xuống cuối, home→focus URL, tabs→tab mới, menu→refresh | 🟨 |
+| A05 | Top bar: thanh URL + nút scan QR, hiển thị domain/SSL, progress (QR: C06) | ✅ |
+| A06 | Bottom bar 5 nút: back / forward / home / tabs / menu | ✅ |
+| A07 | Long-press: back→lên đầu, forward→xuống cuối, home→focus URL, tabs→tab mới, menu→refresh | ✅ |
 | A08 | Cử chỉ vuốt (vuốt cạnh = back/forward, vuốt bottom bar = đổi tab, pull-to-refresh) | ⬜ |
 | A09 | Tab switcher (lưới, thumbnail, đóng bằng vuốt, tab mới) | ⬜ |
 | A10 | Home page chỉnh được (shortcut, ảnh nền, ô tìm kiếm, sắp xếp) | ⬜ |

@@ -2,10 +2,13 @@ package app.pixel.browser.core.engine
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.MutableContextWrapper
 import android.graphics.Bitmap
 import android.net.http.SslError
 import android.os.Bundle
 import android.os.Parcel
+import android.view.View
+import android.view.ViewGroup
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -25,6 +28,9 @@ class WebViewEngineSession(
 
     var isClosed: Boolean = false
         private set
+
+    /** Đã có lỗi SSL kể từ lần tải xong trước / điều hướng tường minh gần nhất (spec 005). */
+    private var sslErrorInLoad = false
 
     init {
         configure(webView.settings)
@@ -85,10 +91,11 @@ class WebViewEngineSession(
 
     override fun loadUrl(url: String) {
         if (isClosed) return
-        if (!isValidWebUrl(url)) {
+        if (!isRestorableUrl(url)) {
             _state.update { it.copy(error = "Invalid URL: $url", isLoading = false) }
             return
         }
+        sslErrorInLoad = false
         _state.update {
             it.copy(url = url, isLoading = true, progress = 0, error = null, securityState = SecurityState.Unknown)
         }
@@ -98,21 +105,45 @@ class WebViewEngineSession(
 
     override fun goBack() {
         if (isClosed || !webView.canGoBack()) return
+        sslErrorInLoad = false
         webView.settings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
         webView.goBack()
     }
 
     override fun goForward() {
         if (isClosed || !webView.canGoForward()) return
+        sslErrorInLoad = false
         webView.settings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
         webView.goForward()
     }
 
     override fun reload() {
         if (isClosed) return
+        sslErrorInLoad = false
         _state.update { it.copy(isLoading = true, progress = 0) }
         webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
         webView.reload()
+    }
+
+    override val view: View?
+        get() = if (isClosed) null else webView
+
+    override fun onPause() {
+        if (!isClosed) webView.onPause()
+    }
+
+    override fun onResume() {
+        if (!isClosed) webView.onResume()
+    }
+
+    override fun scrollToTop() {
+        if (isClosed) return
+        webView.pageUp(true)
+    }
+
+    override fun scrollToBottom() {
+        if (isClosed) return
+        webView.pageDown(true)
     }
 
     override fun stopLoading() {
@@ -155,6 +186,7 @@ class WebViewEngineSession(
             webView.settings.cacheMode = previousMode
             return false
         }
+        sslErrorInLoad = false
         _state.update {
             it.copy(
                 url = current.url,
@@ -174,6 +206,9 @@ class WebViewEngineSession(
         if (isClosed) return
         isClosed = true
         webView.stopLoading()
+        // Gỡ khỏi cây view và trả context về application trước destroy để không giữ Activity (spec 005).
+        (webView.parent as? ViewGroup)?.removeView(webView)
+        (webView.context as? MutableContextWrapper)?.let { it.baseContext = it.applicationContext }
         webView.webViewClient = WebViewClient()
         webView.webChromeClient = null
         webView.destroy()
@@ -182,14 +217,17 @@ class WebViewEngineSession(
     // Điểm vào của callback WebView; internal để test mô phỏng.
     fun dispatchPageStarted(url: String) {
         if (isClosed) return
-        _state.update { it.copy(url = url, isLoading = true) }
+        val security = if (sslErrorInLoad) SecurityState.Insecure else SecurityState.Unknown
+        _state.update { it.copy(url = url, isLoading = true, securityState = security) }
     }
 
     fun dispatchPageFinished(url: String) {
         if (isClosed) return
         // Cache-first chỉ áp dụng cho chính điều hướng lịch sử; điều hướng sau đó (vd. bấm link) dùng mặc định.
         webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
-        _state.update { it.copy(url = url, isLoading = false, progress = 100) }
+        val security = securityStateOnFinish(url, sslErrorInLoad)
+        sslErrorInLoad = false
+        _state.update { it.copy(url = url, isLoading = false, progress = 100, securityState = security) }
         syncHistory()
     }
 
@@ -200,6 +238,7 @@ class WebViewEngineSession(
 
     fun dispatchSslError() {
         if (isClosed) return
+        sslErrorInLoad = true
         _state.update { it.copy(securityState = SecurityState.Insecure) }
     }
 

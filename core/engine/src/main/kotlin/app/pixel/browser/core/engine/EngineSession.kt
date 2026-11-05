@@ -1,5 +1,6 @@
 package app.pixel.browser.core.engine
 
+import android.view.View
 import kotlinx.coroutines.flow.StateFlow
 
 enum class SecurityState { Unknown, Secure, Insecure }
@@ -27,6 +28,9 @@ data class EngineState(
 interface EngineSession {
     val state: StateFlow<EngineState>
 
+    /** View hiển thị nội dung trang (spec 005); null nếu engine không có view (Fake) hoặc đã [close]. */
+    val view: View?
+
     fun loadUrl(url: String)
 
     fun goBack()
@@ -36,6 +40,18 @@ interface EngineSession {
     fun reload()
 
     fun stopLoading()
+
+    /** Tạm dừng engine khi không hiển thị (tab nền, Activity pause). No-op sau [close]. */
+    fun onPause()
+
+    /** Tiếp tục engine khi hiển thị lại. No-op sau [close]. */
+    fun onResume()
+
+    /** Cuộn trang lên đầu (spec 005, A07). No-op sau [close]. */
+    fun scrollToTop()
+
+    /** Cuộn trang xuống cuối (spec 005, A07). No-op sau [close]. */
+    fun scrollToBottom()
 
     /**
      * Tuần tự hóa lịch sử điều hướng (và trạng thái engine nếu có) để khôi phục sau discard/process death.
@@ -63,5 +79,22 @@ fun isValidWebUrl(url: String): Boolean {
 
 /** URL được phép làm mục hiện tại sau `restoreState`: URL web hoặc trang trống. */
 fun isRestorableUrl(url: String): Boolean = url == "about:blank" || isValidWebUrl(url)
+
+/**
+ * [SecurityState] khi trang [url] tải xong (spec 005): lỗi SSL trong lần tải → [SecurityState.Insecure];
+ * `https://` → [SecurityState.Secure]; `http://` → [SecurityState.Insecure]; còn lại → [SecurityState.Unknown].
+ */
+fun securityStateOnFinish(
+    url: String,
+    hadSslError: Boolean,
+): SecurityState {
+    val scheme = url.substringBefore("://", "").lowercase()
+    return when {
+        hadSslError -> SecurityState.Insecure
+        scheme == "https" -> SecurityState.Secure
+        scheme == "http" -> SecurityState.Insecure
+        else -> SecurityState.Unknown
+    }
+}
 
 fun clampProgress(progress: Int): Int = progress.coerceIn(0, 100)

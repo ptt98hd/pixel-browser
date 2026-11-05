@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Top bar (A05) -->
+    <string name="browser_url_placeholder">Tìm kiếm hoặc nhập URL</string>
+    <string name="browser_url_field">Thanh địa chỉ</string>
+    <string name="browser_security_secure">Kết nối an toàn</string>
+    <string name="browser_security_insecure">Kết nối không an toàn</string>
+    <string name="browser_scan_qr">Quét mã QR</string>
+    <string name="browser_page_loading">Đang tải trang</string>
+    <string name="browser_suggestion_search">Tìm “%1$s”</string>
+    <string name="browser_message_blocked">Không thể mở địa chỉ này</string>
+
+    <!-- Bottom bar (A06) -->
+    <string name="browser_back">Quay lại</string>
+    <string name="browser_forward">Tiến</string>
+    <string name="browser_home">Trang chủ</string>
+    <plurals name="browser_tabs">
+        <item quantity="other">Thẻ, đang mở %1$d</item>
+    </plurals>
+    <string name="browser_menu">Tùy chọn khác</string>
+
+    <!-- Long-press (A07) -->
+    <string name="browser_scroll_top">Cuộn lên đầu trang</string>
+    <string name="browser_scroll_bottom">Cuộn xuống cuối trang</string>
+    <string name="browser_edit_url">Sửa địa chỉ</string>
+    <string name="browser_new_tab">Thẻ mới</string>
+    <string name="browser_reload">Tải lại</string>
+
+    <!-- Menu -->
+    <string name="browser_share">Chia sẻ liên kết</string>
+
+    <!-- Tab switcher -->
+    <string name="browser_tabs_title">Thẻ</string>
+    <string name="browser_close_tab">Đóng thẻ %1$s</string>
+    <string name="browser_untitled_tab">Thẻ mới</string>
+    <string name="browser_page_placeholder">Nội dung trang</string>
+</resources>

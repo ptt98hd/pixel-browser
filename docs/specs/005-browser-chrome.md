@@ -108,3 +108,26 @@ Người dùng mở app và thấy một trình duyệt dùng được: thanh UR
 - Long-press back/forward hoạt động cả khi nút disabled cho tap (custom gesture, không dùng `combinedClickable(enabled=false)`).
 - Home URL tạm thời = trang chủ của search engine mặc định cho đến khi có A10.
 - API `TabManager` lấy theo code thật của spec 002 (đã merge trước spec 005); test-writer đối chiếu với code, không theo văn bản spec 002.
+
+## Quyết định (implementer, 2026-11-05)
+- Mọi tab mới tải `searchEngine.homeUrl`: `onNewTab` gọi `TabManager.openTab(homeUrl)`; tab home do `TabManager` tự tạo (khởi động lần đầu, sau khi đóng tab cuối, tab `about:blank` khôi phục) được ViewModel tải `homeUrl` khi nó là tab được chọn và session chưa tải gì.
+- `EngineSession.loadUrl` (WebView + Fake) chấp nhận thêm `about:blank` (`isRestorableUrl`), không thêm scheme nào khác. Omnibox nhập `about:blank` → tải trang trống.
+- `securityState` khi tải xong dùng hàm chung `securityStateOnFinish(url, hadSslError)`. Cờ "có lỗi SSL" reset khi `loadUrl`/`goBack`/`goForward`/`reload`/`restoreState` và sau mỗi lần tải xong (không reset ở `onPageStarted`, để lỗi SSL main-frame trước commit không bị xóa – thiên về an toàn: có thể báo `Insecure` dư cho điều hướng bằng link ngay sau lỗi SSL subresource muộn).
+- `BrowserViewModel.uiState` được tính lại đồng bộ từ `.value` của `TabManager` và mọi session sống (collector `UNDISPATCHED` trên `viewModelScope`), không dùng `combine`, để test đọc state ngay sau hành động. Title trong tab switcher lấy từ `state` của session (fallback `Tab.title`).
+- `BrowserUiState.message` là mã (`BrowserMessages.BLOCKED_INPUT`), UI ánh xạ sang string resource để ViewModel không phụ thuộc Android resource.
+- Nhãn gợi ý Search hiển thị bằng string resource với truy vấn đang gõ (title tiếng Anh của `DefaultSuggestionProvider` không hiển thị).
+- Wiring `:app`: `PixelBrowserApplication` giữ `FileTabSnapshotStore(noBackupFilesDir/tabs.json)` và một IO scope tuần tự (`limitedParallelism(1)`) sống theo process. `MainActivity` tạo `BrowserViewModel` bằng `viewModelFactory`; WebView tạo bằng `MutableContextWrapper(application)`; `EngineContainer` trỏ base context sang Activity khi gắn và trả về application context khi gỡ (đổi tab / `onRelease` khi xoay màn hình). `onStop`: chụp `snapshot()` trên main (WebView `saveState` cần main), ghi đĩa trên IO. `onCleared` → `tabManager.close()`.
+- **Đọc `tabs.json` trên main thread (tạm chấp nhận):** `TabManager` phải tạo trên main (tạo WebView) và constructor của nó gọi `store.read()` đồng bộ. Đọc trước trên IO đòi đổi API `TabManager` (nhận snapshot đã đọc) hoặc hiển thị UI bất đồng bộ – thuộc spec 002/follow-up. File nhỏ (JSON + engine state Base64), chỉ đọc một lần khi ViewModel tạo lần đầu (không đọc lại khi xoay).
+- Back hệ thống: `BackHandler` chỉ enabled khi có việc (menu/sheet mở, đang sửa URL, `canGoBack`), nên AC31(d) rơi về hành vi mặc định.
+- Manifest: `INTERNET` (đã có), `android:allowBackup="false"` + `dataExtractionRules` loại trừ mọi domain cho cả cloud backup lẫn device transfer (cookie/cache WebView nằm ngoài `noBackupFilesDir`). Theme cửa sổ `Theme.DeviceDefault.DayNight` (no action bar), `windowSoftInputMode="adjustResize"`, `enableEdgeToEdge()`; top bar đệm status bar, bottom bar đệm navigation bar ∪ IME.
+- Icon: `androidx.compose.material:material-icons-core` qua Compose BOM (resolve 1.7.8). Ổ khóa insecure dùng `Icons.Filled.Warning` (core không có `LockOpen`); nút QR (ẩn) tạm dùng `Search`.
+- Theme M3 tối thiểu `PixelBrowserTheme` (dynamic color sáng/tối) trong `:app`; A13 làm đầy đủ.
+- Tab switcher dùng `ModalBottomSheet`; chọn/tab mới/Back đóng sheet ngay (không animation ẩn) – A09 làm lại.
+
+## Quyết định (sau review, 2026-11-05)
+- `EngineSession.onPause()`/`onResume()` (WebView: `webView.onPause/onResume`; Fake ghi `isPaused`; no-op sau `close()`). Overload `EngineContainer(session)` dùng `LifecycleEventObserver` trên `LocalLifecycleOwner` (lifecycle-runtime-compose): session được chọn resume khi RESUMED, pause khi rời RESUMED; đổi tab/gỡ composable → pause session cũ. Overload `EngineContainer(view)` giữ nguyên cho test AC2.
+- `WebViewEngineSession.close()` gỡ WebView khỏi parent và trả base context của `MutableContextWrapper` về application context trước `destroy()`.
+- `onPageStarted`: `securityState` = `Insecure` nếu đã có lỗi SSL trong lần tải, ngược lại `Unknown` (không còn giữ `Secure` của trang trước). Fake có `simulatePageStarted(url)` tương đương; contract test cho cả hai.
+- Snackbar hiển thị ở đáy vùng nội dung, ngay trên bottom bar. `url_display` có `onClickLabel` + `Role.Button`.
+- `dataExtractionRules` loại trừ thêm các domain `device_*` (device-protected storage).
+- **Follow-up (không thuộc PR này):** instrumented test `BrowserScrollInstrumentedTest` (cuộn thật bằng `pageUp/pageDown`) và `UrlFieldImeInstrumentedTest` (IME thật khi tap URL/long-press home) – chạy khi có emulator/KVM.
