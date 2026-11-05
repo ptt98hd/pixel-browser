@@ -45,6 +45,7 @@ class FakeEngineSession : EngineSession {
         pendingNavigation = Navigation.NewPage
         cacheMode = CacheMode.Default
         sslErrorInLoad = false
+        dialogGuard.onNewPage()
         _state.update {
             it.copy(url = url, isLoading = true, progress = 0, error = null, securityState = SecurityState.Unknown)
         }
@@ -58,6 +59,7 @@ class FakeEngineSession : EngineSession {
         if (closed || index <= 0) return
         pendingNavigation = Navigation.Back
         sslErrorInLoad = false
+        dialogGuard.onNewPage()
         cacheMode = CacheMode.CacheElseNetwork
         _state.update { it.copy(url = history[index - 1], isLoading = true, progress = 0) }
     }
@@ -66,6 +68,7 @@ class FakeEngineSession : EngineSession {
         if (closed || index >= history.lastIndex) return
         pendingNavigation = Navigation.Forward
         sslErrorInLoad = false
+        dialogGuard.onNewPage()
         cacheMode = CacheMode.CacheElseNetwork
         _state.update { it.copy(url = history[index + 1], isLoading = true, progress = 0) }
     }
@@ -75,6 +78,7 @@ class FakeEngineSession : EngineSession {
         pendingNavigation = Navigation.Reload
         cacheMode = CacheMode.Default
         sslErrorInLoad = false
+        dialogGuard.onNewPage()
         _state.update { it.copy(isLoading = true, progress = 0) }
     }
 
@@ -256,6 +260,118 @@ class FakeEngineSession : EngineSession {
     ): Boolean {
         if (closed) return true
         return requestQueue.handleNavigation(_state.value.url, url, isMainFrame, hasUserGesture, isRedirect)
+    }
+
+    // --- Spec 007: nền tảng web ---
+
+    private val dialogGuard = JsDialogGuard()
+    private var _exitFullscreenCalls = 0
+
+    /** Fake không có view thật, kể cả khi fullscreen (spec 007 AC8). */
+    override val fullscreenView: View? get() = null
+
+    override fun exitFullscreen() {
+        if (closed) return
+        _exitFullscreenCalls++
+        _state.update { it.copy(isFullscreen = false) }
+    }
+
+    /** Số lần [exitFullscreen] được gọi (spec 007 AC8, AC20). */
+    val exitFullscreenCalls: Int get() = _exitFullscreenCalls
+
+    private val pageOrigin: String get() = originOf(_state.value.url)
+
+    /** Mô phỏng JS dialog từ trang hiện tại; null nếu bị chặn (response tự động ghi vào [responses]). */
+    fun simulateJsDialog(
+        kind: JsDialogKind,
+        message: String,
+        defaultValue: String? = null,
+    ): EngineRequest.JsDialog? {
+        if (closed) return null
+        return requestQueue.enqueueJsDialog(
+            guard = dialogGuard,
+            kind = kind,
+            origin = pageOrigin,
+            message = message,
+            defaultValue = defaultValue,
+            onAutoResponse = { _responses[requestQueue.reserveId()] = it },
+            deliver = {},
+        )
+    }
+
+    fun simulatePermissionRequest(
+        permissions: Set<SitePermission>,
+        origin: String = originOf(state.value.url),
+    ) {
+        if (closed) return
+        enqueueSimple { id -> EngineRequest.PermissionPrompt(id, origin, permissions) }
+    }
+
+    /** Engine tự hủy request (như `onPermissionRequestCanceled`): không ghi response. */
+    fun simulatePermissionCanceled(id: Long) {
+        requestQueue.cancel(id)
+    }
+
+    /** Như `onShowFileChooser`; chooser thứ hai khi đã có một cái đang chờ bị bỏ qua (spec 007 AC6). */
+    fun simulateFileChooser(
+        acceptTypes: List<String>,
+        allowMultiple: Boolean = false,
+        capture: Boolean = false,
+    ) {
+        if (closed || requestQueue.requests.value.any { it is EngineRequest.FileChooser }) return
+        enqueueSimple { id ->
+            EngineRequest.FileChooser(id, pageOrigin, normalizeAcceptTypes(acceptTypes), allowMultiple, capture)
+        }
+    }
+
+    fun simulateHttpAuth(
+        host: String,
+        realm: String,
+    ) {
+        if (closed) return
+        enqueueSimple { id -> EngineRequest.HttpAuth(id, pageOrigin, host, realm) }
+    }
+
+    /** Như `onCreateWindow`; true = popup được giữ (có gesture). */
+    fun simulateCreateWindow(isUserGesture: Boolean): Boolean {
+        if (closed) return false
+        if (isUserGesture) {
+            enqueueSimple { id -> EngineRequest.NewWindow(id, pageOrigin) }
+        } else {
+            enqueueSimple { id -> EngineRequest.PopupBlocked(id, pageOrigin) }
+        }
+        return isUserGesture
+    }
+
+    fun simulateCloseWindow() {
+        if (closed) return
+        enqueueSimple { id -> EngineRequest.CloseWindow(id, pageOrigin) }
+    }
+
+    fun simulateDownload(
+        url: String,
+        mimeType: String? = null,
+        contentDisposition: String? = null,
+        contentLength: Long = -1,
+    ) {
+        if (closed) return
+        enqueueSimple { id -> EngineRequest.Download(id, pageOrigin, url, mimeType, contentDisposition, contentLength) }
+    }
+
+    /** Như `onShowCustomView`. */
+    fun simulateEnterFullscreen() {
+        if (closed) return
+        _state.update { it.copy(isFullscreen = true) }
+    }
+
+    /** Như `onHideCustomView` (trang tự thoát fullscreen); không tính vào [exitFullscreenCalls]. */
+    fun simulateExitFullscreen() {
+        if (closed) return
+        _state.update { it.copy(isFullscreen = false) }
+    }
+
+    private fun <T : EngineRequest> enqueueSimple(build: (Long) -> T) {
+        requestQueue.enqueue(build) { request, response -> request.accepts(response) }
     }
 
     private companion object {

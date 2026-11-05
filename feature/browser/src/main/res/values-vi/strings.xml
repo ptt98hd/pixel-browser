@@ -52,4 +52,34 @@
     <string name="browser_external_message_package">Trang này muốn mở ứng dụng %1$s.</string>
     <string name="browser_external_open">Mở</string>
     <string name="browser_external_cancel">Hủy</string>
+    <!-- Spec 007: nền tảng web -->
+    <string name="web_ok">OK</string>
+    <string name="web_cancel">Hủy</string>
+    <string name="web_js_title">%1$s cho biết</string>
+    <string name="web_js_title_unknown">Trang này cho biết</string>
+    <string name="web_js_leave_title">Rời khỏi trang này?</string>
+    <string name="web_js_leave">Rời trang</string>
+    <string name="web_js_stay">Ở lại</string>
+    <string name="web_js_suppress">Không cho trang này hiện thêm hộp thoại</string>
+    <string name="web_permission_title">%1$s muốn</string>
+    <string name="web_permission_camera">Dùng camera</string>
+    <string name="web_permission_microphone">Dùng micrô</string>
+    <string name="web_permission_location">Biết vị trí của bạn</string>
+    <string name="web_permission_embedded">Được nhúng trong %1$s</string>
+    <string name="browser_message_download_failed">Không bắt đầu tải xuống được</string>
+    <string name="web_permission_allow">Cho phép</string>
+    <string name="web_permission_block">Chặn</string>
+    <string name="web_auth_title">Đăng nhập</string>
+    <string name="web_auth_message">%1$s yêu cầu tên người dùng và mật khẩu. Trang web cho biết: “%2$s”</string>
+    <string name="web_auth_insecure">Kết nối tới trang này không riêng tư. Người khác có thể thấy mật khẩu của bạn.</string>
+    <string name="web_auth_username">Tên người dùng</string>
+    <string name="web_auth_password">Mật khẩu</string>
+    <string name="web_auth_sign_in">Đăng nhập</string>
+    <string name="web_download_title">Tải tệp xuống?</string>
+    <string name="web_download_start">Tải xuống</string>
+    <string name="browser_message_popup_blocked">Đã chặn cửa sổ bật lên</string>
+    <string name="browser_message_permission_denied">Quyền bị từ chối. Bạn có thể cho phép trong cài đặt ứng dụng.</string>
+    <string name="browser_message_permission_settings">Cài đặt</string>
+    <string name="browser_message_download_unsupported">Loại tải xuống này chưa được hỗ trợ</string>
+    <string name="browser_message_file_chooser_unavailable">Không có ứng dụng nào để chọn tệp</string>
 </resources>

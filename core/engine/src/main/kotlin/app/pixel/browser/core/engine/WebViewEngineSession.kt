@@ -4,12 +4,20 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.MutableContextWrapper
 import android.graphics.Bitmap
+import android.net.Uri
 import android.net.http.SslError
 import android.os.Bundle
+import android.os.Message
 import android.os.Parcel
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.GeolocationPermissions
+import android.webkit.HttpAuthHandler
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
+import android.webkit.PermissionRequest
 import android.webkit.SslErrorHandler
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -34,6 +42,17 @@ class WebViewEngineSession(
 
     /** Đã có lỗi SSL kể từ lần tải xong trước / điều hướng tường minh gần nhất (spec 005). */
     private var sslErrorInLoad = false
+
+    private val dialogGuard = JsDialogGuard()
+
+    /** Request quyền media đang chờ, để gỡ khi `onPermissionRequestCanceled` (spec 007 AC4). */
+    private val pendingPermissions = mutableMapOf<PermissionRequest, Long>()
+
+    /** Request vị trí đang chờ, để gỡ khi `onGeolocationPermissionsHidePrompt` (spec 007 AC5). */
+    private val pendingGeolocation = mutableListOf<Long>()
+
+    private var customView: View? = null
+    private var customViewCallback: WebChromeClient.CustomViewCallback? = null
 
     init {
         configure(webView.settings)
@@ -75,6 +94,22 @@ class WebViewEngineSession(
                     handler.cancel()
                     dispatchSslError()
                 }
+
+                override fun onReceivedHttpAuthRequest(
+                    view: WebView,
+                    handler: HttpAuthHandler,
+                    host: String,
+                    realm: String,
+                ) {
+                    // Không dùng/ghi thông tin đăng nhập đã lưu (WebViewDatabase) – spec 007 AC7.
+                    dispatchHttpAuth(host, realm) { response ->
+                        if (response is EngineResponse.Credentials) {
+                            handler.proceed(response.username, response.password)
+                        } else {
+                            handler.cancel()
+                        }
+                    }
+                }
             }
         webView.webChromeClient =
             object : WebChromeClient() {
@@ -89,7 +124,89 @@ class WebViewEngineSession(
                 ) {
                     if (!isClosed) _state.update { it.copy(title = title) }
                 }
+
+                override fun onJsAlert(
+                    view: WebView,
+                    url: String,
+                    message: String,
+                    result: JsResult,
+                ): Boolean = handleJsDialog(JsDialogKind.Alert, url, message, null, result)
+
+                override fun onJsConfirm(
+                    view: WebView,
+                    url: String,
+                    message: String,
+                    result: JsResult,
+                ): Boolean = handleJsDialog(JsDialogKind.Confirm, url, message, null, result)
+
+                override fun onJsPrompt(
+                    view: WebView,
+                    url: String,
+                    message: String,
+                    defaultValue: String?,
+                    result: JsPromptResult,
+                ): Boolean = handleJsDialog(JsDialogKind.Prompt, url, message, defaultValue, result)
+
+                override fun onJsBeforeUnload(
+                    view: WebView,
+                    url: String,
+                    message: String,
+                    result: JsResult,
+                ): Boolean = handleJsDialog(JsDialogKind.BeforeUnload, url, message, null, result)
+
+                override fun onPermissionRequest(request: PermissionRequest) = handlePermissionRequest(request)
+
+                override fun onPermissionRequestCanceled(request: PermissionRequest) {
+                    pendingPermissions.remove(request)?.let(requestQueue::cancel)
+                }
+
+                override fun onGeolocationPermissionsShowPrompt(
+                    origin: String,
+                    callback: GeolocationPermissions.Callback,
+                ) = handleGeolocationPrompt(origin, callback)
+
+                override fun onGeolocationPermissionsHidePrompt() {
+                    pendingGeolocation.forEach(requestQueue::cancel)
+                    pendingGeolocation.clear()
+                }
+
+                override fun onShowFileChooser(
+                    webView: WebView,
+                    filePathCallback: ValueCallback<Array<Uri>>,
+                    fileChooserParams: FileChooserParams,
+                ): Boolean = handleFileChooser(filePathCallback, fileChooserParams)
+
+                override fun onShowCustomView(
+                    view: View,
+                    callback: CustomViewCallback,
+                ) = handleShowCustomView(view, callback)
+
+                override fun onHideCustomView() = handleHideCustomView()
+
+                override fun onCreateWindow(
+                    view: WebView,
+                    isDialog: Boolean,
+                    isUserGesture: Boolean,
+                    resultMsg: Message,
+                ): Boolean =
+                    dispatchCreateWindow(isUserGesture) { target ->
+                        (resultMsg.obj as? WebView.WebViewTransport)?.webView = target
+                        resultMsg.sendToTarget()
+                    }
+
+                override fun onCloseWindow(window: WebView) {
+                    if (isClosed) return
+                    enqueueSimple { id -> EngineRequest.CloseWindow(id, pageOrigin) }
+                }
             }
+        webView.setDownloadListener { url, _, contentDisposition, mimeType, contentLength ->
+            // Engine không tự tải: tầng UI quyết định (spec 007 AC10).
+            if (!isClosed) {
+                enqueueSimple { id ->
+                    EngineRequest.Download(id, pageOrigin, url, mimeType, contentDisposition, contentLength)
+                }
+            }
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -101,6 +218,11 @@ class WebViewEngineSession(
         s.allowFileAccess = false
         s.allowContentAccess = false
         s.cacheMode = WebSettings.LOAD_DEFAULT
+        // Popup: WebView luôn báo onCreateWindow, engine tự quyết theo isUserGesture (spec 007 AC9).
+        s.setSupportMultipleWindows(true)
+        s.javaScriptCanOpenWindowsAutomatically = true
+        s.setGeolocationEnabled(true)
+        s.mediaPlaybackRequiresUserGesture = true
     }
 
     override fun loadUrl(url: String) {
@@ -110,6 +232,7 @@ class WebViewEngineSession(
             return
         }
         sslErrorInLoad = false
+        dialogGuard.onNewPage()
         _state.update {
             it.copy(url = url, isLoading = true, progress = 0, error = null, securityState = SecurityState.Unknown)
         }
@@ -134,6 +257,7 @@ class WebViewEngineSession(
     override fun reload() {
         if (isClosed) return
         sslErrorInLoad = false
+        dialogGuard.onNewPage()
         _state.update { it.copy(isLoading = true, progress = 0) }
         webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
         webView.reload()
@@ -218,20 +342,26 @@ class WebViewEngineSession(
 
     override fun close() {
         if (isClosed) return
+        exitFullscreen()
+        handleHideCustomView()
         isClosed = true
         requestQueue.dismissAll()
+        pendingPermissions.clear()
+        pendingGeolocation.clear()
         webView.stopLoading()
         // Gỡ khỏi cây view và trả context về application trước destroy để không giữ Activity (spec 005).
         (webView.parent as? ViewGroup)?.removeView(webView)
         (webView.context as? MutableContextWrapper)?.let { it.baseContext = it.applicationContext }
         webView.webViewClient = WebViewClient()
         webView.webChromeClient = null
+        webView.setDownloadListener(null)
         webView.destroy()
     }
 
     // Điểm vào của callback WebView; internal để test mô phỏng.
     fun dispatchPageStarted(url: String) {
         if (isClosed) return
+        dialogGuard.onNewPage()
         val security = if (sslErrorInLoad) SecurityState.Insecure else SecurityState.Unknown
         _state.update { it.copy(url = url, isLoading = true, securityState = security) }
     }
@@ -275,6 +405,226 @@ class WebViewEngineSession(
         return requestQueue.handleNavigation(_state.value.url, url, isMainFrame, hasGesture, isRedirect)
     }
 
+    override val fullscreenView: View?
+        get() = customView
+
+    override fun exitFullscreen() {
+        val callback = customViewCallback ?: return
+        customViewCallback = null
+        customView = null
+        callback.onCustomViewHidden()
+        _state.update { it.copy(isFullscreen = false) }
+    }
+
+    /** Điểm vào của `onJsAlert/onJsConfirm/onJsPrompt/onJsBeforeUnload` (spec 007 AC2–AC3). */
+    fun dispatchJsDialog(
+        kind: JsDialogKind,
+        url: String,
+        message: String,
+        defaultValue: String?,
+        onResult: (EngineResponse) -> Unit,
+    ) {
+        if (isClosed) {
+            onResult(EngineResponse.Dismiss())
+            return
+        }
+        requestQueue.enqueueJsDialog(
+            guard = dialogGuard,
+            kind = kind,
+            origin = originOf(url),
+            message = message,
+            defaultValue = defaultValue,
+            onAutoResponse = onResult,
+            deliver = onResult,
+        )
+    }
+
+    /** Điểm vào của `onReceivedHttpAuthRequest` (spec 007 AC7). */
+    fun dispatchHttpAuth(
+        host: String,
+        realm: String,
+        onResult: (EngineResponse) -> Unit,
+    ) {
+        if (isClosed) {
+            onResult(EngineResponse.Dismiss())
+            return
+        }
+        requestQueue.enqueue(
+            build = { id -> EngineRequest.HttpAuth(id, pageOrigin, host, realm) },
+            onResponse = { request, response ->
+                request.accepts(response).also { if (it) onResult(response) }
+            },
+        )
+    }
+
+    /** Điểm vào của `onCreateWindow` (spec 007 AC9). true = engine giữ popup (chờ [onAttach]). */
+    fun dispatchCreateWindow(
+        isUserGesture: Boolean,
+        onAttach: (WebView) -> Unit,
+    ): Boolean {
+        if (isClosed) return false
+        if (!isUserGesture) {
+            enqueueSimple { id -> EngineRequest.PopupBlocked(id, pageOrigin) }
+            return false
+        }
+        requestQueue.enqueue(
+            build = { id -> EngineRequest.NewWindow(id, pageOrigin) },
+            onResponse = { request, response ->
+                when (response) {
+                    is EngineResponse.AttachWindow -> {
+                        val target = response.target as? WebViewEngineSession
+                        if (target == null || target.isClosed || target === this) {
+                            false
+                        } else {
+                            onAttach(target.webView)
+                            true
+                        }
+                    }
+
+                    else -> {
+                        request.accepts(response)
+                    }
+                }
+            },
+        )
+        return true
+    }
+
+    private val pageOrigin: String get() = originOf(_state.value.url)
+
+    private fun <T : EngineRequest> enqueueSimple(build: (Long) -> T) {
+        requestQueue.enqueue(build) { request, response -> request.accepts(response) }
+    }
+
+    private fun handleJsDialog(
+        kind: JsDialogKind,
+        url: String,
+        message: String,
+        defaultValue: String?,
+        result: JsResult,
+    ): Boolean {
+        dispatchJsDialog(kind, url, message, defaultValue) { response ->
+            when (response) {
+                is EngineResponse.PromptText -> {
+                    (result as? JsPromptResult)?.confirm(response.value) ?: result.confirm()
+                }
+
+                // Prompt + Confirm = giá trị mặc định (AC1).
+                is EngineResponse.Confirm -> {
+                    (result as? JsPromptResult)?.confirm(defaultValue.orEmpty())
+                        ?: result.confirm()
+                }
+
+                else -> {
+                    result.cancel()
+                }
+            }
+        }
+        return true
+    }
+
+    private fun handlePermissionRequest(request: PermissionRequest) {
+        val permissions = request.resources.mapNotNull(MEDIA_RESOURCES::get).toSet()
+        if (isClosed || permissions.isEmpty()) {
+            request.deny()
+            return
+        }
+        val prompt =
+            requestQueue.enqueue(
+                build = { id ->
+                    EngineRequest.PermissionPrompt(id, originOf(request.origin.toString()), permissions)
+                },
+                onResponse = { prompt, response ->
+                    if (!prompt.accepts(response)) return@enqueue false
+                    pendingPermissions.remove(request)
+                    val granted = (response as? EngineResponse.Grant)?.permissions.orEmpty()
+                    val resources = MEDIA_RESOURCES.filterValues { it in granted }.keys
+                    if (resources.isEmpty()) request.deny() else request.grant(resources.toTypedArray())
+                    true
+                },
+            )
+        pendingPermissions[request] = prompt.id
+    }
+
+    private fun handleGeolocationPrompt(
+        origin: String,
+        callback: GeolocationPermissions.Callback,
+    ) {
+        if (isClosed) {
+            callback.invoke(origin, false, false)
+            return
+        }
+        val prompt =
+            requestQueue.enqueue(
+                build = { id -> EngineRequest.PermissionPrompt(id, originOf(origin), setOf(SitePermission.Location)) },
+                onResponse = { prompt, response ->
+                    if (!prompt.accepts(response)) return@enqueue false
+                    pendingGeolocation.remove(prompt.id)
+                    val allow =
+                        (response as? EngineResponse.Grant)?.permissions?.contains(SitePermission.Location) == true
+                    // Không bao giờ retain: quyền chỉ nhớ trong process ở tầng UI (spec 007 AC5, AC16).
+                    callback.invoke(origin, allow, false)
+                    true
+                },
+            )
+        pendingGeolocation += prompt.id
+    }
+
+    private fun handleFileChooser(
+        callback: ValueCallback<Array<Uri>>,
+        params: WebChromeClient.FileChooserParams,
+    ): Boolean {
+        // Luôn phải gọi callback (kể cả null), nếu không WebView không mở chooser lần sau (spec 007 AC6).
+        if (isClosed || requestQueue.requests.value.any { it is EngineRequest.FileChooser }) {
+            callback.onReceiveValue(null)
+            return true
+        }
+        requestQueue.enqueue(
+            build = { id ->
+                EngineRequest.FileChooser(
+                    id = id,
+                    origin = pageOrigin,
+                    acceptTypes = normalizeAcceptTypes(params.acceptTypes.orEmpty().toList()),
+                    allowMultiple = params.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE,
+                    capture = params.isCaptureEnabled,
+                )
+            },
+            onResponse = { request, response ->
+                if (!request.accepts(response)) return@enqueue false
+                // Chỉ chuyển URI content:// cho trang; file://, đường dẫn trần, http… bị bỏ (review spec 007).
+                val uris =
+                    (response as? EngineResponse.Files)
+                        ?.uris
+                        .orEmpty()
+                        .map(Uri::parse)
+                        .filter { it.scheme.equals("content", ignoreCase = true) }
+                callback.onReceiveValue(uris.takeIf { it.isNotEmpty() }?.toTypedArray())
+                true
+            },
+        )
+        return true
+    }
+
+    private fun handleShowCustomView(
+        view: View,
+        callback: WebChromeClient.CustomViewCallback,
+    ) {
+        if (isClosed || customView != null) {
+            // Đang fullscreen: từ chối view mới, giữ view cũ (spec 007 AC8).
+            callback.onCustomViewHidden()
+            return
+        }
+        customView = view
+        customViewCallback = callback
+        _state.update { it.copy(isFullscreen = true) }
+    }
+
+    private fun handleHideCustomView() {
+        customView = null
+        customViewCallback = null
+        if (!isClosed) _state.update { it.copy(isFullscreen = false) }
+    }
+
     private fun syncHistory() {
         if (isClosed) return
         _state.update { it.copy(canGoBack = webView.canGoBack(), canGoForward = webView.canGoForward()) }
@@ -282,6 +632,13 @@ class WebViewEngineSession(
 
     private companion object {
         const val STATE_MAGIC = 0x50585753 // "PXWS"
+
+        /** Resource media được hỗ trợ; MIDI/Protected media bị từ chối (spec 007 AC4). */
+        val MEDIA_RESOURCES =
+            mapOf(
+                PermissionRequest.RESOURCE_VIDEO_CAPTURE to SitePermission.Camera,
+                PermissionRequest.RESOURCE_AUDIO_CAPTURE to SitePermission.Microphone,
+            )
         const val STATE_VERSION = 1
 
         fun marshall(bundle: Bundle): ByteArray {

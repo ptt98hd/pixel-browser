@@ -6,9 +6,11 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.content.MutableContextWrapper
+import android.net.Uri
 import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -21,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -35,21 +38,27 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.pixel.browser.core.data.ThemeSettings
 import app.pixel.browser.core.engine.EngineSession
+import app.pixel.browser.core.engine.originOf
 import app.pixel.browser.core.omnibox.UrlDisplay
 import app.pixel.browser.feature.browser.intent.DefaultBrowserController
 import app.pixel.browser.feature.browser.intent.RoleManagerDefaultBrowser
 import app.pixel.browser.feature.browser.intent.defaultAppsSettingsIntent
+import app.pixel.browser.feature.browser.web.EngineRequestHost
 import kotlinx.coroutines.launch
 
 /** Có thể chia sẻ [url] không: không chia sẻ URL rỗng/trang trống (AC26). */
@@ -65,6 +74,7 @@ fun BrowserScreen(
     actions: BrowserActions,
     modifier: Modifier = Modifier,
     themeSettings: ThemeSettings = ThemeSettings(),
+    fullscreenContent: @Composable () -> Unit = { FullscreenContainer(view = null) },
     engineContent: @Composable () -> Unit = {},
 ) {
     var menuOpen by rememberSaveable { mutableStateOf(false) }
@@ -82,62 +92,46 @@ fun BrowserScreen(
             else -> actions.onReturnToCaller()
         }
     }
+    // Spec 007 AC20: khi fullscreen, Back thoát fullscreen trước mọi nhánh của AC31 (handler đăng ký sau thắng).
+    BackHandler(enabled = state.isFullscreen) { actions.onExitFullscreen() }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val messageText = state.message?.let { messageText(it) }
+    val settingsLabel = stringResource(R.string.browser_message_permission_settings)
     LaunchedEffect(state.message) {
         if (messageText != null) {
-            scope.launch { snackbarHostState.showSnackbar(messageText) }
+            val withSettings = state.message == BrowserMessages.PERMISSION_DENIED
+            scope.launch {
+                val result =
+                    snackbarHostState.showSnackbar(messageText, actionLabel = settingsLabel.takeIf { withSettings })
+                if (result == SnackbarResult.ActionPerformed) actions.onOpenAppSettings()
+            }
             actions.onMessageShown()
         }
     }
 
     Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
         Column(Modifier.fillMaxSize()) {
-            BrowserTopBar(state = state, actions = actions)
+            // Fullscreen (AC20): chrome bị gỡ, engine vẫn trong cây (không pause WebView đang phát video).
+            if (!state.isFullscreen) BrowserTopBar(state = state, actions = actions)
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 engineContent()
                 // Snackbar ngay trên bottom bar (đáy vùng nội dung).
                 SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
             }
-            Box {
-                BrowserBottomBar(
+            if (!state.isFullscreen) {
+                ChromeBottom(
                     state = state,
                     actions = actions,
+                    menuOpen = menuOpen,
+                    onMenuOpenChange = { menuOpen = it },
                     onTabsClick = { tabsOpen = true },
-                    onMenuClick = { menuOpen = true },
+                    onThemeClick = { themeDialogOpen = true },
                 )
-                Box(Modifier.align(Alignment.TopEnd)) {
-                    BrowserMenu(
-                        expanded = menuOpen,
-                        canShare = canShare(state.url),
-                        onDismiss = { menuOpen = false },
-                        onReload = {
-                            menuOpen = false
-                            actions.onReload()
-                        },
-                        onNewTab = {
-                            menuOpen = false
-                            actions.onNewTab()
-                        },
-                        onShare = {
-                            menuOpen = false
-                            actions.onShare()
-                        },
-                        showSetDefault = state.showSetDefaultBrowser,
-                        onSetDefault = {
-                            menuOpen = false
-                            actions.onSetDefaultBrowser()
-                        },
-                        onTheme = {
-                            menuOpen = false
-                            themeDialogOpen = true
-                        },
-                    )
-                }
             }
         }
+        if (state.isFullscreen) fullscreenContent()
     }
 
     val prompt = state.externalPrompt
@@ -172,6 +166,54 @@ fun BrowserScreen(
     }
 }
 
+/** Bottom bar + menu tràn (spec 005); ẩn khi fullscreen (spec 007 AC20). */
+@Composable
+private fun ChromeBottom(
+    state: BrowserUiState,
+    actions: BrowserActions,
+    menuOpen: Boolean,
+    onMenuOpenChange: (Boolean) -> Unit,
+    onTabsClick: () -> Unit,
+    onThemeClick: () -> Unit,
+) {
+    Box {
+        BrowserBottomBar(
+            state = state,
+            actions = actions,
+            onTabsClick = onTabsClick,
+            onMenuClick = { onMenuOpenChange(true) },
+        )
+        Box(Modifier.align(Alignment.TopEnd)) {
+            BrowserMenu(
+                expanded = menuOpen,
+                canShare = canShare(state.url),
+                onDismiss = { onMenuOpenChange(false) },
+                onReload = {
+                    onMenuOpenChange(false)
+                    actions.onReload()
+                },
+                onNewTab = {
+                    onMenuOpenChange(false)
+                    actions.onNewTab()
+                },
+                onShare = {
+                    onMenuOpenChange(false)
+                    actions.onShare()
+                },
+                showSetDefault = state.showSetDefaultBrowser,
+                onSetDefault = {
+                    onMenuOpenChange(false)
+                    actions.onSetDefaultBrowser()
+                },
+                onTheme = {
+                    onMenuOpenChange(false)
+                    onThemeClick()
+                },
+            )
+        }
+    }
+}
+
 @Composable
 private fun messageText(code: String): String =
     when (code) {
@@ -180,6 +222,11 @@ private fun messageText(code: String): String =
         BrowserMessages.EXTERNAL_APP_NOT_FOUND -> stringResource(R.string.browser_message_external_not_found)
         BrowserMessages.EXTERNAL_APP_BLOCKED -> stringResource(R.string.browser_message_external_blocked)
         BrowserMessages.SETTINGS_UNAVAILABLE -> stringResource(R.string.browser_message_settings_unavailable)
+        BrowserMessages.POPUP_BLOCKED -> stringResource(R.string.browser_message_popup_blocked)
+        BrowserMessages.PERMISSION_DENIED -> stringResource(R.string.browser_message_permission_denied)
+        BrowserMessages.DOWNLOAD_UNSUPPORTED -> stringResource(R.string.browser_message_download_unsupported)
+        BrowserMessages.DOWNLOAD_FAILED -> stringResource(R.string.browser_message_download_failed)
+        BrowserMessages.FILE_CHOOSER_UNAVAILABLE -> stringResource(R.string.browser_message_file_chooser_unavailable)
         else -> code
     }
 
@@ -248,10 +295,98 @@ fun BrowserRoute(
                     returnToCaller()
                 },
                 onThemeChange = onThemeChange,
+                onExitFullscreen = viewModel::onExitFullscreen,
+                onOpenAppSettings = { openAppDetailsSettings(context) },
             )
         }
-    BrowserScreen(state = state, actions = actions, modifier = modifier, themeSettings = themeSettings) {
+    BrowserScreen(
+        state = state,
+        actions = actions,
+        modifier = modifier,
+        themeSettings = themeSettings,
+        fullscreenContent = { FullscreenContainer(view = session?.fullscreenView) },
+    ) {
         EngineContainer(session = session)
+    }
+    KeepScreenOnAndImmersive(enabled = state.isFullscreen)
+    EngineRequestHost(
+        tabId = state.selectedTabId,
+        request = state.pendingRequest,
+        pageOrigin = originOf(state.url),
+        runtimePermissions = viewModel.runtimePermissions,
+        onRespond = { tabId, requestId, response -> viewModel.onRespond(tabId, requestId, response) },
+        onPermissionDecision = { tabId, requestId, allow -> viewModel.onPermissionDecision(tabId, requestId, allow) },
+        onFileChooserUnavailable = viewModel::onFileChooserUnavailable,
+        onDownloadFailed = viewModel::onDownloadFailed,
+    )
+}
+
+/**
+ * Fullscreen (spec 007 AC20): giữ màn hình sáng và ẩn system bar (vuốt để hiện tạm) khi [enabled]; gỡ khi tắt
+ * hoặc composable bị gỡ.
+ */
+@Composable
+private fun KeepScreenOnAndImmersive(enabled: Boolean) {
+    val activity = LocalContext.current.findActivity() ?: return
+    DisposableEffect(activity, enabled) {
+        val window = activity.window
+        val insets = WindowCompat.getInsetsController(window, window.decorView)
+        if (enabled) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            insets.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            insets.hide(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose {
+            if (enabled) {
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                insets.show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
+}
+
+/** Màn hình chi tiết app (cấp lại quyền đã bị chặn "Không hỏi lại"). */
+private fun openAppDetailsSettings(context: Context) {
+    val intent =
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+    if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        context.startActivity(intent)
+    } catch (_: ActivityNotFoundException) {
+        Unit
+    }
+}
+
+/**
+ * Vùng video toàn màn hình (spec 007 AC20): hiển thị [view] của `onShowCustomView`; null (Fake) → placeholder.
+ * Không đổi context của view (view thuộc WebView đang gắn ở `engine_container`).
+ */
+@Composable
+fun FullscreenContainer(
+    view: View?,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier.fillMaxSize().background(Color.Black).testTag(BrowserTestTags.FULLSCREEN_CONTAINER)) {
+        if (view != null) {
+            AndroidView(
+                factory = { FrameLayout(it) },
+                modifier = Modifier.fillMaxSize(),
+                update = { container ->
+                    if (container.childCount != 1 || container.getChildAt(0) !== view) {
+                        container.removeAllViews()
+                        (view.parent as? ViewGroup)?.removeView(view)
+                        container.addView(
+                            view,
+                            FrameLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                            ),
+                        )
+                    }
+                },
+                onRelease = { container -> container.removeAllViews() },
+            )
+        }
     }
 }
 

@@ -9,6 +9,8 @@ import app.pixel.browser.core.tabs.TabsSnapshot
 import app.pixel.browser.feature.browser.intent.ExternalAppLauncher
 import app.pixel.browser.feature.browser.intent.ExternalLaunchResult
 import app.pixel.browser.feature.browser.intent.ExternalTarget
+import app.pixel.browser.feature.browser.web.RuntimePermissionGate
+import app.pixel.browser.feature.browser.web.SitePermissionMemory
 
 /** Bọc [FakeEngineSession] và đếm lời gọi để kiểm "được gọi đúng N lần" / "không được gọi". */
 class SpySession(
@@ -98,15 +100,42 @@ class RecordingLauncher(
     }
 }
 
+/**
+ * [RuntimePermissionGate] giả (spec 007): [alreadyGranted] là quyền OS đã có; [grantOnRequest] quyết định tập được
+ * cấp khi xin (mặc định cấp hết). Ghi lại mọi lần xin.
+ */
+class FakePermissionGate(
+    val alreadyGranted: MutableSet<String> = mutableSetOf(),
+    var grantOnRequest: (Set<String>) -> Set<String> = { it },
+) : RuntimePermissionGate {
+    val requests = mutableListOf<Set<String>>()
+
+    override suspend fun request(androidPermissions: Set<String>): Set<String> {
+        requests += androidPermissions
+        return grantOnRequest(androidPermissions).intersect(androidPermissions).also { alreadyGranted += it }
+    }
+
+    override fun isGranted(androidPermission: String): Boolean = androidPermission in alreadyGranted
+}
+
 /** Môi trường chung: TabManager thật + SpySession + ViewModel. */
 class BrowserFixture(
     store: InMemoryStore = InMemoryStore(),
     val launcher: RecordingLauncher = RecordingLauncher(),
     clock: () -> Long = { 0L },
+    val permissionMemory: SitePermissionMemory = SitePermissionMemory(),
+    val gate: FakePermissionGate = FakePermissionGate(),
 ) {
     val factory = SpySessionFactory()
     val tabManager = TabManager(factory, store)
-    val viewModel = BrowserViewModel(tabManager, externalAppLauncher = launcher, clock = clock)
+    val viewModel =
+        BrowserViewModel(
+            tabManager,
+            externalAppLauncher = launcher,
+            clock = clock,
+            permissionMemory = permissionMemory,
+            runtimePermissions = gate,
+        )
 
     val homeUrl: String get() = viewModel.homeUrl
 

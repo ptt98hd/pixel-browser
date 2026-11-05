@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Spec 007 AC26: FileProvider chỉ chia sẻ ảnh/video chụp trong cacheDir/captures. -->
+<paths>
+    <cache-path name="captures" path="captures/" />
+</paths>

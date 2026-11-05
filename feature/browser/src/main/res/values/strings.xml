@@ -53,4 +53,34 @@
     <string name="browser_external_message_package">This page wants to open the app %1$s.</string>
     <string name="browser_external_open">Open</string>
     <string name="browser_external_cancel">Cancel</string>
+    <!-- Spec 007: nền tảng web -->
+    <string name="web_ok">OK</string>
+    <string name="web_cancel">Cancel</string>
+    <string name="web_js_title">%1$s says</string>
+    <string name="web_js_title_unknown">This page says</string>
+    <string name="web_js_leave_title">Leave this page?</string>
+    <string name="web_js_leave">Leave</string>
+    <string name="web_js_stay">Stay</string>
+    <string name="web_js_suppress">Don’t let this page show more dialogs</string>
+    <string name="web_permission_title">%1$s wants to</string>
+    <string name="web_permission_camera">Use your camera</string>
+    <string name="web_permission_microphone">Use your microphone</string>
+    <string name="web_permission_location">Know your location</string>
+    <string name="web_permission_embedded">Embedded in %1$s</string>
+    <string name="browser_message_download_failed">Couldn’t start the download</string>
+    <string name="web_permission_allow">Allow</string>
+    <string name="web_permission_block">Block</string>
+    <string name="web_auth_title">Sign in</string>
+    <string name="web_auth_message">%1$s requires a username and password. The site says: “%2$s”</string>
+    <string name="web_auth_insecure">Your connection to this site is not private. Your password can be seen by others.</string>
+    <string name="web_auth_username">Username</string>
+    <string name="web_auth_password">Password</string>
+    <string name="web_auth_sign_in">Sign in</string>
+    <string name="web_download_title">Download file?</string>
+    <string name="web_download_start">Download</string>
+    <string name="browser_message_popup_blocked">Pop-up blocked</string>
+    <string name="browser_message_permission_denied">Permission denied. You can allow it in app settings.</string>
+    <string name="browser_message_permission_settings">Settings</string>
+    <string name="browser_message_download_unsupported">This type of download isn’t supported yet</string>
+    <string name="browser_message_file_chooser_unavailable">No app can pick files</string>
 </resources>

@@ -83,6 +83,21 @@ class TabManager(
         return entry.tab
     }
 
+    /**
+     * Tab cho popup của [openerId] (spec 007 AC12): chèn ngay sau opener, chọn nó; session mới không `loadUrl`
+     * (engine của popup tự điều hướng). null nếu opener không tồn tại.
+     */
+    fun openTabForWindow(openerId: String): Tab? {
+        val index = entries.indexOfFirst { it.id == openerId }
+        if (index < 0) return null
+        val opener = entries[index]
+        val entry = newEntry(HOME_URL, isPrivate = opener.tab.isPrivate)
+        entries.add(index + 1, entry)
+        activate(entry)
+        publish()
+        return entry.tab
+    }
+
     fun selectTab(id: String) {
         val entry = find(id) ?: return
         activate(entry)
