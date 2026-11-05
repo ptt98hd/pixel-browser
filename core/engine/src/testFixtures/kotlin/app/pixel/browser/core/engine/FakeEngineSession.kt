@@ -170,7 +170,11 @@ class FakeEngineSession : EngineSession {
         }
 
     override fun close() {
+        if (closed) return
         closed = true
+        val pending = requestQueue.requests.value.map { it.id }
+        requestQueue.dismissAll()
+        pending.forEach { _responses[it] = EngineResponse.Dismiss() }
     }
 
     fun simulateProgress(progress: Int) {
@@ -226,6 +230,32 @@ class FakeEngineSession : EngineSession {
     fun simulateTitle(title: String) {
         if (closed) return
         _state.update { it.copy(title = title) }
+    }
+
+    // --- Spec 006: EngineRequest ---
+
+    private val requestQueue = EngineRequestQueue()
+    private val _responses = linkedMapOf<Long, EngineResponse>()
+
+    override val requests: StateFlow<List<EngineRequest>> = requestQueue.requests
+
+    override fun respond(
+        requestId: Long,
+        response: EngineResponse,
+    ): Boolean = requestQueue.respond(requestId, response).also { if (it) _responses[requestId] = response }
+
+    /** Mọi response đã được chấp nhận (kể cả `dismissAll` khi close), theo id request. */
+    val responses: Map<Long, EngineResponse> get() = _responses.toMap()
+
+    /** Mô phỏng `shouldOverrideUrlLoading`; true = engine đã chặn điều hướng (spec 006 AC5). */
+    fun simulateNavigation(
+        url: String,
+        isMainFrame: Boolean = true,
+        hasUserGesture: Boolean = true,
+        isRedirect: Boolean = false,
+    ): Boolean {
+        if (closed) return true
+        return requestQueue.handleNavigation(_state.value.url, url, isMainFrame, hasUserGesture, isRedirect)
     }
 
     private companion object {

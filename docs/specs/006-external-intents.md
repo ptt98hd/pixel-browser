@@ -195,3 +195,23 @@ interface DefaultBrowserController {
 - Intent đến luôn mở tab mới, trừ khi tái dùng tab home ban đầu chưa dùng; không dựa vào `EXTRA_APPLICATION_ID`.
 - Link sang app khác: có user gesture → mở thẳng; không có gesture hoặc tab nền → hỏi.
 - `launchMode=singleTask` + `onNewIntent`.
+
+## Quyết định khi implement (implementer, 2026-11-05)
+- "Tab home chưa dùng" (AC13) = tab home mà `BrowserViewModel` tự tải `homeUrl` vào (lúc khởi tạo hoặc sau khi đóng tab cuối), đang được chọn, `canGoBack == false` và `state.url` là `""` hoặc `homeUrl` (dù trang home đã tải xong hay chưa).
+- `AndroidExternalAppLauncher` nhận `Context` thay vì `Activity`: `MainActivity` truyền application context để `ViewModel` không giữ Activity; khi context không phải Activity, intent được thêm `FLAG_ACTIVITY_NEW_TASK`. Không dùng `<queries>`: gọi `startActivity` và bắt `ActivityNotFoundException` (và `SecurityException`) → `NotFound(fallbackUrl)`.
+- `ExternalIntents.parse` dựng intent mới từ đầu (chỉ `ACTION_VIEW`, data/type, package, `CATEGORY_BROWSABLE`): bỏ component, selector, extras, clipData, mọi cờ. Ngoài `file`/`content`/`javascript`, scheme `data`/`about`/`blob`/`filesystem` cũng bị từ chối. `intent:` thiếu cả data lẫn package → `null`.
+- `NavigationPolicy`: `filesystem:` cũng `Block`. Helper chung `schemeOf(url)` trong `:core:engine`.
+- AC25 chống spam áp dụng cho mọi session: request `ExternalApp` mới khi session đó đã có request đang chờ → `Dismiss()` ngay (kể cả tab nền, kể cả có gesture). Tab nền chỉ giữ request đầu tiên.
+
+### Sau code review (2026-11-06)
+- Hộp thoại không tự parse URI thô: nội dung lấy từ `ExternalIntents.describe(uri, ownPackage): ExternalTarget?` – dựng trên chính `parse` mà `AndroidExternalAppLauncher` dùng – hiển thị `intent.package` nếu có, ngược lại scheme của data (không bao giờ là `intent`). Package sau `SEL;` thuộc selector (bị bỏ) nên không hiển thị; `package=` lặp → hiển thị đúng package sẽ mở.
+- `ExternalAppLauncher.describe(uri)` (mặc định chỉ nêu scheme, dành cho bản giả; bản Android dùng `ExternalIntents.describe`). ViewModel gọi `describe` cho mọi request mới: `null` → `Dismiss()` + message `external_app_blocked`, không hỏi, không mở.
+- Bẫy hộp thoại lặp: sau khi người dùng hủy, mọi request không gesture tiếp theo của tab đó nhận `Dismiss(suppressFurther = true)` cho tới khi `state.url` của tab đổi (trang mới) hoặc có request có gesture.
+- Một chạm mở nhiều app: mỗi đợt xử lý chỉ mở thẳng tối đa một request (các request còn lại trong đợt bị bỏ), và mỗi tab mở thẳng tối đa 1 lần/1 giây (`DIRECT_LAUNCH_INTERVAL_MS`); request có gesture trong khoảng đó đi qua hộp thoại. Đồng hồ inject qua tham số `clock` của `BrowserViewModel`.
+- Chỉ mở thẳng khi app hiển thị (lifecycle ≥ STARTED, `BrowserViewModel.onAppVisibilityChanged`, do `BrowserRoute` báo); khi ẩn, request có gesture đi qua hộp thoại.
+- Quyết định gắn với tab: `onExternalAppDecision(tabId, requestId, open)`; chỉ tác động nếu tab đó còn request này đang chờ. `BrowserUiState.externalPromptTabId`. Overload `(requestId, open)` cũ dùng tab đang chọn.
+- Giới hạn độ dài: `IncomingIntentResolver.MAX_URL_LENGTH = 8192`. URL VIEW dài hơn → `Rejected(InvalidUrl)`. Văn bản SEND được cắt còn `MAX_URL_LENGTH + 1` ký tự trước khi chạy regex; URL tìm thấy dài hơn giới hạn hoặc chạm điểm cắt → `Rejected(InvalidUrl)` (không mở URL đã bị cắt).
+- `intent:` không phân biệt hoa thường (chuẩn hóa tiền tố trước `Intent.parseUri`); scheme data đã decode được `trim()` trước khi so với danh sách cấm. `openDefaultAppsSettings` bắt cả `SecurityException`.
+- AC14: `BrowserUiState.isExternalTab`, `BrowserViewModel.onReturnToCaller()` (đóng tab nếu mở từ intent và hết lịch sử). `BrowserRoute(onReturnToCaller = …)`; mặc định gọi `moveTaskToBack(true)` trên Activity chứa composable, `MainActivity` truyền tường minh.
+- AC18–AC19: `BrowserRoute(defaultBrowserController = …)`, mặc định `RoleManagerDefaultBrowser(applicationContext)`; mục menu chỉ hiện khi role khả dụng và chưa giữ (`onDefaultBrowserChanged(isDefault = !available || held)`). Bộ đếm hủy nằm trong `rememberSaveable`, reset khi app đã giữ role. Mở Settings lỗi → `Settings.ACTION_SETTINGS` → message `settings_unavailable` (`BrowserViewModel.onDefaultBrowserSettingsUnavailable()`).
+- Chưa làm edge case "intent đến khi menu/tab sheet đang mở thì đóng chúng": trạng thái menu/sheet là state cục bộ của `BrowserScreen`; hiện chỉ thoát chế độ sửa URL.

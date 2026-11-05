@@ -11,6 +11,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -29,6 +30,8 @@ class WebViewEngineSession(
     var isClosed: Boolean = false
         private set
 
+    private val requestQueue = EngineRequestQueue()
+
     /** Đã có lỗi SSL kể từ lần tải xong trước / điều hướng tường minh gần nhất (spec 005). */
     private var sslErrorInLoad = false
 
@@ -46,6 +49,17 @@ class WebViewEngineSession(
                     view: WebView,
                     url: String,
                 ) = dispatchPageFinished(url)
+
+                override fun shouldOverrideUrlLoading(
+                    view: WebView,
+                    request: WebResourceRequest,
+                ): Boolean =
+                    dispatchNavigation(
+                        url = request.url.toString(),
+                        isMainFrame = request.isForMainFrame,
+                        hasGesture = request.hasGesture(),
+                        isRedirect = request.isRedirect,
+                    )
 
                 override fun doUpdateVisitedHistory(
                     view: WebView,
@@ -205,6 +219,7 @@ class WebViewEngineSession(
     override fun close() {
         if (isClosed) return
         isClosed = true
+        requestQueue.dismissAll()
         webView.stopLoading()
         // Gỡ khỏi cây view và trả context về application trước destroy để không giữ Activity (spec 005).
         (webView.parent as? ViewGroup)?.removeView(webView)
@@ -240,6 +255,24 @@ class WebViewEngineSession(
         if (isClosed) return
         sslErrorInLoad = true
         _state.update { it.copy(securityState = SecurityState.Insecure) }
+    }
+
+    override val requests: StateFlow<List<EngineRequest>> = requestQueue.requests
+
+    override fun respond(
+        requestId: Long,
+        response: EngineResponse,
+    ): Boolean = requestQueue.respond(requestId, response)
+
+    /** Điểm vào của `shouldOverrideUrlLoading` (spec 006 AC5). true = engine chặn điều hướng. */
+    fun dispatchNavigation(
+        url: String,
+        isMainFrame: Boolean,
+        hasGesture: Boolean,
+        isRedirect: Boolean,
+    ): Boolean {
+        if (isClosed) return true
+        return requestQueue.handleNavigation(_state.value.url, url, isMainFrame, hasGesture, isRedirect)
     }
 
     private fun syncHistory() {

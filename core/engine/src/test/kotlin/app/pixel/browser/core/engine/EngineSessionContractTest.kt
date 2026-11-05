@@ -28,6 +28,14 @@ abstract class EngineSessionContractTest {
     /** View mà engine phải expose khi còn mở (spec 005): Fake → null, WebView → `webView`. */
     protected abstract fun expectedView(session: EngineSession): View?
 
+    /** Mô phỏng `shouldOverrideUrlLoading` (spec 006); true = engine chặn điều hướng. */
+    protected abstract fun EngineSession.emitNavigation(
+        url: String,
+        isMainFrame: Boolean = true,
+        hasGesture: Boolean = true,
+        isRedirect: Boolean = false,
+    ): Boolean
+
     private val url = "https://example.com/"
 
     @Test
@@ -249,5 +257,109 @@ abstract class EngineSessionContractTest {
         s.onPause()
         s.onResume()
         assertNull(s.view)
+    }
+
+    // --- Spec 006: EngineRequest & điều hướng ---
+
+    private fun loadedSession(): EngineSession =
+        createSession().apply {
+            loadUrl(url)
+            emitPageFinished(url)
+        }
+
+    @Test
+    fun ac1_newSession_hasNoRequests() {
+        assertTrue(createSession().requests.value.isEmpty())
+    }
+
+    @Test
+    fun ac1_respond_removesRequest_andSecondRespondFails() {
+        val s = loadedSession()
+        s.emitNavigation("tel:1")
+        s.emitNavigation("mailto:a@b.c")
+        assertEquals(listOf(1L, 2L), s.requests.value.map { it.id })
+        assertTrue(s.respond(1, EngineResponse.Dismiss()))
+        assertEquals(listOf(2L), s.requests.value.map { it.id })
+        assertFalse(s.respond(1, EngineResponse.Dismiss()))
+        assertFalse(s.respond(99, EngineResponse.Dismiss()))
+    }
+
+    @Test
+    fun ac2_close_dismissesPendingRequests_andRespondFailsAfterwards() {
+        val s = loadedSession()
+        s.emitNavigation("tel:1")
+        s.emitNavigation("tel:2")
+        assertEquals(2, s.requests.value.size)
+        s.close()
+        assertTrue(s.requests.value.isEmpty())
+        assertFalse(s.respond(1, EngineResponse.Dismiss()))
+        assertFalse(s.respond(2, EngineResponse.Dismiss()))
+    }
+
+    @Test
+    fun ac5_mainFrameExternalScheme_isBlocked_andEmitsExternalAppRequest() {
+        val s = loadedSession()
+        val before = s.state.value.url
+        assertTrue(s.emitNavigation("tel:123", isMainFrame = true, hasGesture = true))
+        assertEquals(before, s.state.value.url)
+        assertEquals(
+            listOf(
+                EngineRequest.ExternalApp(
+                    id = 1,
+                    origin = originOf(before),
+                    uri = "tel:123",
+                    hasUserGesture = true,
+                    isRedirect = false,
+                ),
+            ),
+            s.requests.value,
+        )
+        assertEquals(
+            "https://example.com",
+            s.requests.value
+                .single()
+                .origin,
+        )
+    }
+
+    @Test
+    fun ac5_requestCarriesGestureAndRedirectFlags() {
+        val s = loadedSession()
+        assertTrue(s.emitNavigation("market://details?id=x", hasGesture = false, isRedirect = true))
+        val r = s.requests.value.single() as EngineRequest.ExternalApp
+        assertEquals("market://details?id=x", r.uri)
+        assertFalse(r.hasUserGesture)
+        assertTrue(r.isRedirect)
+    }
+
+    @Test
+    fun ac5_subframeExternalScheme_isBlocked_withoutRequest() {
+        val s = loadedSession()
+        assertTrue(s.emitNavigation("tel:123", isMainFrame = false))
+        assertTrue(s.requests.value.isEmpty())
+    }
+
+    @Test
+    fun ac5_webUrl_isLoadedByEngine_withoutRequest() {
+        val s = loadedSession()
+        assertFalse(s.emitNavigation("https://a.com"))
+        assertTrue(s.requests.value.isEmpty())
+    }
+
+    @Test
+    fun ac5_fileUrl_isBlocked_withoutRequest() {
+        val s = loadedSession()
+        val before = s.state.value.url
+        assertTrue(s.emitNavigation("file:///sdcard/a"))
+        assertTrue(s.requests.value.isEmpty())
+        assertEquals(before, s.state.value.url)
+    }
+
+    @Test
+    fun ac5_navigationAfterClose_createsNoRequest() {
+        val s = loadedSession()
+        s.close()
+        s.emitNavigation("tel:123")
+        assertTrue(s.requests.value.isEmpty())
     }
 }

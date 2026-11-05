@@ -34,4 +34,15 @@
     <string name="browser_close_tab">Đóng thẻ %1$s</string>
     <string name="browser_untitled_tab">Thẻ mới</string>
     <string name="browser_page_placeholder">Nội dung trang</string>
+    <!-- Spec 006: intent, trình duyệt mặc định, app ngoài -->
+    <string name="browser_set_default">Đặt làm trình duyệt mặc định</string>
+    <string name="browser_message_intent_rejected">Pixel không thể mở liên kết này</string>
+    <string name="browser_message_external_not_found">Không có ứng dụng nào mở được liên kết này</string>
+    <string name="browser_message_external_blocked">Liên kết này đã bị chặn để bảo vệ bạn</string>
+    <string name="browser_message_settings_unavailable">Không mở được cài đặt ứng dụng mặc định</string>
+    <string name="browser_external_title">Mở bằng ứng dụng khác?</string>
+    <string name="browser_external_message_scheme">Trang này muốn mở liên kết “%1$s” bằng ứng dụng khác.</string>
+    <string name="browser_external_message_package">Trang này muốn mở ứng dụng %1$s.</string>
+    <string name="browser_external_open">Mở</string>
+    <string name="browser_external_cancel">Hủy</string>
 </resources>

@@ -1,5 +1,6 @@
 package app.pixel.browser
 
+import android.content.Intent
 import android.content.MutableContextWrapper
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -12,6 +13,10 @@ import app.pixel.browser.core.engine.WebViewEngineSession
 import app.pixel.browser.core.tabs.TabManager
 import app.pixel.browser.feature.browser.BrowserRoute
 import app.pixel.browser.feature.browser.BrowserViewModel
+import app.pixel.browser.feature.browser.intent.AndroidExternalAppLauncher
+import app.pixel.browser.feature.browser.intent.IncomingIntent
+import app.pixel.browser.feature.browser.intent.IncomingIntentResolver
+import app.pixel.browser.feature.browser.intent.from
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -33,6 +38,8 @@ class MainActivity : ComponentActivity() {
                         sessionFactory = { WebViewEngineSession(MutableContextWrapper(appContext)) },
                         store = appContext.tabStore,
                     ),
+                    // Application context: ViewModel sống lâu hơn Activity (launcher thêm FLAG_ACTIVITY_NEW_TASK).
+                    externalAppLauncher = AndroidExternalAppLauncher(appContext),
                 )
             }
         }
@@ -41,7 +48,24 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        setContent { PixelBrowserTheme { BrowserRoute(viewModel) } }
+        setContent {
+            PixelBrowserTheme { BrowserRoute(viewModel, onReturnToCaller = { moveTaskToBack(true) }) }
+        }
+        // Spec 006 AC16: intent chỉ xử lý ở lần tạo đầu; recreate (xoay, process death) không xử lý lại.
+        if (savedInstanceState == null) handleIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    /** Spec 006 AC15: intent từ app khác → tab mới (xem [IncomingIntentResolver]). */
+    private fun handleIntent(intent: Intent?) {
+        if (intent == null) return
+        val request = IncomingIntentResolver.resolve(IncomingIntent.from(intent), viewModel.searchEngine)
+        viewModel.onIncomingIntent(request)
     }
 
     override fun onStop() {

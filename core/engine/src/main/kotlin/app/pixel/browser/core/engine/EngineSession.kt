@@ -67,6 +67,18 @@ interface EngineSession {
 
     /** Giải phóng engine. Mọi lời gọi sau đó là no-op. */
     fun close()
+
+    /** Hàng đợi FIFO các request chưa trả lời (spec 006). */
+    val requests: StateFlow<List<EngineRequest>>
+
+    /**
+     * Trả lời request; false nếu id không tồn tại/đã trả lời/response không hợp lệ với loại request
+     * (request giữ nguyên) – spec 006.
+     */
+    fun respond(
+        requestId: Long,
+        response: EngineResponse,
+    ): Boolean
 }
 
 fun isValidWebUrl(url: String): Boolean {
@@ -98,3 +110,33 @@ fun securityStateOnFinish(
 }
 
 fun clampProgress(progress: Int): Int = progress.coerceIn(0, 100)
+
+/**
+ * Áp dụng [NavigationPolicy] cho điều hướng do trang khởi tạo (spec 006 AC5): `External` ở main frame
+ * phát [EngineRequest.ExternalApp]. Trả true nếu engine phải chặn điều hướng.
+ */
+fun EngineRequestQueue.handleNavigation(
+    currentUrl: String,
+    url: String,
+    isMainFrame: Boolean,
+    hasGesture: Boolean,
+    isRedirect: Boolean,
+): Boolean =
+    when (NavigationPolicy.decide(url, isMainFrame)) {
+        NavigationDecision.LoadInEngine -> {
+            false
+        }
+
+        NavigationDecision.Block -> {
+            true
+        }
+
+        NavigationDecision.External -> {
+            enqueue(
+                build = { id -> EngineRequest.ExternalApp(id, originOf(currentUrl), url, hasGesture, isRedirect) },
+                // Engine không cần làm gì thêm khi request được trả lời: UI tự mở app ngoài.
+                onResponse = { _, response -> response is EngineResponse.Dismiss },
+            )
+            true
+        }
+    }

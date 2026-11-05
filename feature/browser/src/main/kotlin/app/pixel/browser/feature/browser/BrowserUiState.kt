@@ -1,5 +1,6 @@
 package app.pixel.browser.feature.browser
 
+import app.pixel.browser.core.engine.EngineRequest
 import app.pixel.browser.core.engine.SecurityState
 import app.pixel.browser.core.omnibox.Suggestion
 
@@ -27,4 +28,12 @@ data class BrowserUiState(
     val isEditingUrl: Boolean = false,
     val suggestions: List<Suggestion> = emptyList(),
     val message: String? = null,
+    /** Hiện mục menu "Đặt làm trình duyệt mặc định" (spec 006 AC18). */
+    val showSetDefaultBrowser: Boolean = false,
+    /** Request mở app ngoài đang chờ người dùng xác nhận (spec 006 AC24). */
+    val externalPrompt: EngineRequest.ExternalApp? = null,
+    /** Tab sở hữu [externalPrompt]; quyết định của người dùng gắn với tab này (spec 006). */
+    val externalPromptTabId: String? = null,
+    /** Tab đang chọn được mở từ intent ngoài: Back ở gốc lịch sử quay về app gọi (spec 006 AC14). */
+    val isExternalTab: Boolean = false,
 )
