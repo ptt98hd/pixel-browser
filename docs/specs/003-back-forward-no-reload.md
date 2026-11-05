@@ -13,4 +13,9 @@ Quay lại trang trước thì hiện ngay vị trí cũ, không tải lại.
 Trang `no-store`/POST có thể phải tải lại (chấp nhận, hiển thị xác nhận với form POST); redirect không tạo mục lịch sử thừa.
 
 ## Tests
-`HistoryNavigationTest` (Robolectric/fake), kiểm thử thủ công trên emulator cho bfcache/scroll.
+`HistoryNavigationContractTest` (hợp đồng chung) chạy qua `FakeHistoryNavigationTest` (JVM, `FakeEngineSession`) và `WebViewHistoryNavigationTest` (Robolectric, `WebViewEngineSession`); kiểm thử thủ công trên emulator cho bfcache/scroll.
+
+## Quyết định (orchestrator, 2026-11-05)
+- Sau khi trang tải xong (onPageFinished), cache mode trở về `LOAD_DEFAULT` để click link sau khi back không bị dùng cache-first.
+- Trạng thái engine lưu bằng `Parcel` → chỉ khôi phục được trên cùng phiên bản Android/WebView; thất bại thì tải lại URL.
+- Sau `restoreState`, mục hiện tại phải là URL web (http/https) hoặc `about:blank`; nếu không thì trả false. `restoreState` thành công đặt `isLoading = true` cho tới khi trang tải xong.

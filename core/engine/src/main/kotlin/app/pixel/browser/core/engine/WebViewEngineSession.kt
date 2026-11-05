@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.http.SslError
+import android.os.Bundle
+import android.os.Parcel
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -78,6 +80,7 @@ class WebViewEngineSession(
         s.safeBrowsingEnabled = true
         s.allowFileAccess = false
         s.allowContentAccess = false
+        s.cacheMode = WebSettings.LOAD_DEFAULT
     }
 
     override fun loadUrl(url: String) {
@@ -89,20 +92,26 @@ class WebViewEngineSession(
         _state.update {
             it.copy(url = url, isLoading = true, progress = 0, error = null, securityState = SecurityState.Unknown)
         }
+        webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
         webView.loadUrl(url)
     }
 
     override fun goBack() {
-        if (!isClosed) webView.goBack()
+        if (isClosed || !webView.canGoBack()) return
+        webView.settings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
+        webView.goBack()
     }
 
     override fun goForward() {
-        if (!isClosed) webView.goForward()
+        if (isClosed || !webView.canGoForward()) return
+        webView.settings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
+        webView.goForward()
     }
 
     override fun reload() {
         if (isClosed) return
         _state.update { it.copy(isLoading = true, progress = 0) }
+        webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
         webView.reload()
     }
 
@@ -110,6 +119,55 @@ class WebViewEngineSession(
         if (isClosed) return
         webView.stopLoading()
         _state.update { it.copy(isLoading = false) }
+    }
+
+    /**
+     * Bundle của `WebView.saveState` được marshall bằng [Parcel]. Định dạng Parcel không ổn định giữa các
+     * phiên bản Android/WebView: chỉ dùng cho discard trong process và process death cùng phiên bản;
+     * nếu khôi phục thất bại, tầng trên tải lại URL.
+     */
+    override fun saveState(): ByteArray? {
+        if (isClosed) return null
+        return try {
+            val bundle = Bundle()
+            val list = webView.saveState(bundle)
+            if (list == null || list.size == 0 || bundle.isEmpty) null else marshall(bundle)
+        } catch (_: RuntimeException) {
+            null
+        }
+    }
+
+    override fun restoreState(state: ByteArray): Boolean {
+        if (isClosed) return false
+        val bundle = unmarshall(state) ?: return false
+        val previousMode = webView.settings.cacheMode
+        webView.settings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
+        val list =
+            try {
+                webView.restoreState(bundle)
+            } catch (_: RuntimeException) {
+                null
+            }
+        val current = list?.currentItem
+        if (list == null || list.size == 0 || current == null || !isRestorableUrl(current.url)) {
+            // Mục hiện tại không phải URL web (vd. file://, javascript:): dừng tải, giữ nguyên state.
+            if (list != null) webView.stopLoading()
+            webView.settings.cacheMode = previousMode
+            return false
+        }
+        _state.update {
+            it.copy(
+                url = current.url,
+                title = current.title.orEmpty(),
+                isLoading = true,
+                progress = 0,
+                error = null,
+                securityState = SecurityState.Unknown,
+                canGoBack = webView.canGoBack(),
+                canGoForward = webView.canGoForward(),
+            )
+        }
+        return true
     }
 
     override fun close() {
@@ -129,6 +187,8 @@ class WebViewEngineSession(
 
     fun dispatchPageFinished(url: String) {
         if (isClosed) return
+        // Cache-first chỉ áp dụng cho chính điều hướng lịch sử; điều hướng sau đó (vd. bấm link) dùng mặc định.
+        webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
         _state.update { it.copy(url = url, isLoading = false, progress = 100) }
         syncHistory()
     }
@@ -146,5 +206,37 @@ class WebViewEngineSession(
     private fun syncHistory() {
         if (isClosed) return
         _state.update { it.copy(canGoBack = webView.canGoBack(), canGoForward = webView.canGoForward()) }
+    }
+
+    private companion object {
+        const val STATE_MAGIC = 0x50585753 // "PXWS"
+        const val STATE_VERSION = 1
+
+        fun marshall(bundle: Bundle): ByteArray {
+            val parcel = Parcel.obtain()
+            try {
+                parcel.writeInt(STATE_MAGIC)
+                parcel.writeInt(STATE_VERSION)
+                parcel.writeBundle(bundle)
+                return parcel.marshall()
+            } finally {
+                parcel.recycle()
+            }
+        }
+
+        fun unmarshall(bytes: ByteArray): Bundle? {
+            if (bytes.size < 2 * Int.SIZE_BYTES) return null
+            val parcel = Parcel.obtain()
+            return try {
+                parcel.unmarshall(bytes, 0, bytes.size)
+                parcel.setDataPosition(0)
+                if (parcel.readInt() != STATE_MAGIC || parcel.readInt() != STATE_VERSION) return null
+                parcel.readBundle(WebViewEngineSession::class.java.classLoader)?.takeUnless { it.isEmpty }
+            } catch (_: RuntimeException) {
+                null
+            } finally {
+                parcel.recycle()
+            }
+        }
     }
 }

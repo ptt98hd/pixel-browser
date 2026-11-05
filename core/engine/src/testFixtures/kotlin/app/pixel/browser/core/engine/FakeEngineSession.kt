@@ -3,6 +3,11 @@ package app.pixel.browser.core.engine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.DataInputStream
+import java.io.DataOutputStream
+import java.io.IOException
 
 /** Engine giả chạy trên JVM, tuân thủ cùng hợp đồng với [WebViewEngineSession]. */
 class FakeEngineSession : EngineSession {
@@ -15,6 +20,15 @@ class FakeEngineSession : EngineSession {
 
     val loadedUrls: List<String> get() = history.toList()
 
+    val isClosed: Boolean get() = closed
+
+    /**
+     * Cache mode của điều hướng gần nhất (spec 003). Giống [WebViewEngineSession]: điều hướng lịch sử
+     * dùng [CacheMode.CacheElseNetwork] cho tới khi trang tải xong, sau đó trở về [CacheMode.Default].
+     */
+    var cacheMode: CacheMode = CacheMode.Default
+        private set
+
     override fun loadUrl(url: String) {
         if (closed) return
         if (!isValidWebUrl(url)) {
@@ -23,6 +37,7 @@ class FakeEngineSession : EngineSession {
         }
         // Lịch sử chỉ đổi khi trang commit (simulatePageFinished) — giống engine thật.
         pendingNavigation = Navigation.NewPage
+        cacheMode = CacheMode.Default
         _state.update {
             it.copy(url = url, isLoading = true, progress = 0, error = null, securityState = SecurityState.Unknown)
         }
@@ -35,18 +50,21 @@ class FakeEngineSession : EngineSession {
     override fun goBack() {
         if (closed || index <= 0) return
         pendingNavigation = Navigation.Back
+        cacheMode = CacheMode.CacheElseNetwork
         _state.update { it.copy(url = history[index - 1], isLoading = true, progress = 0) }
     }
 
     override fun goForward() {
         if (closed || index >= history.lastIndex) return
         pendingNavigation = Navigation.Forward
+        cacheMode = CacheMode.CacheElseNetwork
         _state.update { it.copy(url = history[index + 1], isLoading = true, progress = 0) }
     }
 
     override fun reload() {
         if (closed) return
         pendingNavigation = Navigation.Reload
+        cacheMode = CacheMode.Default
         _state.update { it.copy(isLoading = true, progress = 0) }
     }
 
@@ -54,6 +72,58 @@ class FakeEngineSession : EngineSession {
         if (closed) return
         _state.update { it.copy(isLoading = false) }
     }
+
+    override fun saveState(): ByteArray? {
+        if (closed || history.isEmpty()) return null
+        val out = ByteArrayOutputStream()
+        DataOutputStream(out).use { d ->
+            d.writeInt(STATE_MAGIC)
+            d.writeInt(index)
+            d.writeUTF(_state.value.title)
+            d.writeInt(history.size)
+            history.forEach(d::writeUTF)
+        }
+        return out.toByteArray()
+    }
+
+    override fun restoreState(state: ByteArray): Boolean {
+        if (closed) return false
+        val (entries, current, title) = decode(state) ?: return false
+        history.clear()
+        history.addAll(entries)
+        index = current
+        // Engine tải lại mục hiện tại (từ cache) mà không đổi lịch sử.
+        pendingNavigation = Navigation.Reload
+        cacheMode = CacheMode.CacheElseNetwork
+        _state.update {
+            it.copy(
+                url = history[index],
+                title = title,
+                isLoading = true,
+                progress = 0,
+                error = null,
+                canGoBack = index > 0,
+                canGoForward = index < history.lastIndex,
+            )
+        }
+        return true
+    }
+
+    private fun decode(bytes: ByteArray): Triple<List<String>, Int, String>? =
+        try {
+            DataInputStream(ByteArrayInputStream(bytes)).use { d ->
+                if (d.readInt() != STATE_MAGIC) return null
+                val current = d.readInt()
+                val title = d.readUTF()
+                val size = d.readInt()
+                if (size !in 1..bytes.size || current !in 0 until size) return null
+                val entries = List(size) { d.readUTF() }
+                if (d.available() != 0 || !isRestorableUrl(entries[current])) return null
+                Triple(entries, current, title)
+            }
+        } catch (_: IOException) {
+            null
+        }
 
     override fun close() {
         closed = true
@@ -88,6 +158,7 @@ class FakeEngineSession : EngineSession {
             }
         }
         pendingNavigation = Navigation.NewPage
+        cacheMode = CacheMode.Default
         _state.update {
             it.copy(
                 url = url,
@@ -107,5 +178,9 @@ class FakeEngineSession : EngineSession {
     fun simulateTitle(title: String) {
         if (closed) return
         _state.update { it.copy(title = title) }
+    }
+
+    private companion object {
+        const val STATE_MAGIC = 0x50584653 // "PXFS"
     }
 }
