@@ -44,6 +44,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import app.pixel.browser.core.data.ThemeSettings
 import app.pixel.browser.core.engine.EngineSession
 import app.pixel.browser.core.omnibox.UrlDisplay
 import app.pixel.browser.feature.browser.intent.DefaultBrowserController
@@ -63,10 +64,12 @@ fun BrowserScreen(
     state: BrowserUiState,
     actions: BrowserActions,
     modifier: Modifier = Modifier,
+    themeSettings: ThemeSettings = ThemeSettings(),
     engineContent: @Composable () -> Unit = {},
 ) {
     var menuOpen by rememberSaveable { mutableStateOf(false) }
     var tabsOpen by rememberSaveable { mutableStateOf(false) }
+    var themeDialogOpen by rememberSaveable { mutableStateOf(false) }
 
     // AC31: (a) sheet/menu → đóng; (b) đang sửa → hủy sửa; (c) có lịch sử → goBack; (d) không chặn.
     // Spec 006 AC14: tab mở từ intent, hết lịch sử → đóng tab và quay về app gọi.
@@ -127,6 +130,10 @@ fun BrowserScreen(
                             menuOpen = false
                             actions.onSetDefaultBrowser()
                         },
+                        onTheme = {
+                            menuOpen = false
+                            themeDialogOpen = true
+                        },
                     )
                 }
             }
@@ -155,6 +162,14 @@ fun BrowserScreen(
             onDismiss = { tabsOpen = false },
         )
     }
+
+    if (themeDialogOpen) {
+        ThemeDialog(
+            settings = themeSettings,
+            onChange = actions.onThemeChange,
+            onDismiss = { themeDialogOpen = false },
+        )
+    }
 }
 
 @Composable
@@ -174,6 +189,8 @@ private fun messageText(code: String): String =
  * Spec 006: [defaultBrowserController] (mặc định [RoleManagerDefaultBrowser]) được hỏi lại ở mỗi `ON_RESUME`;
  * [onReturnToCaller] được gọi sau khi tab mở từ intent bị đóng bằng Back (mặc định `moveTaskToBack(true)` trên
  * Activity chứa composable).
+ *
+ * Theme do app sở hữu: [themeSettings] hiển thị trong `ThemeDialog`, lựa chọn mới gửi qua [onThemeChange] (spec 011).
  */
 @Composable
 fun BrowserRoute(
@@ -181,6 +198,8 @@ fun BrowserRoute(
     modifier: Modifier = Modifier,
     defaultBrowserController: DefaultBrowserController? = null,
     onReturnToCaller: (() -> Unit)? = null,
+    themeSettings: ThemeSettings = ThemeSettings(),
+    onThemeChange: (ThemeSettings) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
     val session by viewModel.selectedSession.collectAsState()
@@ -194,7 +213,7 @@ fun BrowserRoute(
     val setDefault = rememberDefaultBrowserRequest(viewModel, controller)
     TrackAppVisibility(viewModel)
     val actions =
-        remember(viewModel, context, shareTitle, setDefault) {
+        remember(viewModel, context, shareTitle, setDefault, onThemeChange) {
             BrowserActions(
                 onBack = viewModel::onBack,
                 onForward = viewModel::onForward,
@@ -228,9 +247,10 @@ fun BrowserRoute(
                     viewModel.onReturnToCaller()
                     returnToCaller()
                 },
+                onThemeChange = onThemeChange,
             )
         }
-    BrowserScreen(state = state, actions = actions, modifier = modifier) {
+    BrowserScreen(state = state, actions = actions, modifier = modifier, themeSettings = themeSettings) {
         EngineContainer(session = session)
     }
 }

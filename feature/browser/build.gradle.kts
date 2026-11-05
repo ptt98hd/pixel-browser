@@ -24,6 +24,7 @@ dependencies {
     api(project(":core:engine"))
     api(project(":core:tabs"))
     api(project(":core:omnibox"))
+    api(project(":core:ui"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.androidx.core.ktx)
@@ -41,5 +42,6 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(platform(libs.compose.bom))
     testImplementation(libs.compose.ui.test.junit4)
+    testImplementation(libs.androidx.test.espresso.core)
     debugImplementation(libs.compose.ui.test.manifest)
 }

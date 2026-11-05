@@ -18,7 +18,7 @@ Trạng thái: ⬜ chưa làm · 🟨 đang làm · ✅ xong. Mỗi feature có 
 | A10 | Home page chỉnh được (shortcut, ảnh nền, ô tìm kiếm, sắp xếp) | 🟨 |
 | A11 | File chooser, camera/mic/location permission prompts, fullscreen video, window.open/popup, JS dialogs, HTTP auth | 🟨 |
 | A12 | Mở link từ app khác (VIEW intent), đặt làm trình duyệt mặc định (role) | ✅ |
-| A13 | Theme Material 3 Expressive + animation (shape morph, motion spring), dynamic color, light/dark hệ thống | 🟨 |
+| A13 | Theme Material 3 Expressive + animation (shape morph, motion spring), dynamic color, light/dark hệ thống (loading indicator dùng ở 010) | ✅ |
 
 ## B. Chrome parity (M2)
 | ID | Feature | Status |

@@ -17,6 +17,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
+import app.pixel.browser.core.ui.PixelSemantics
 import app.pixel.browser.feature.browser.BrowserTestTags.BTN_BACK
 import app.pixel.browser.feature.browser.BrowserTestTags.BTN_FORWARD
 import app.pixel.browser.feature.browser.BrowserTestTags.BTN_HOME
@@ -260,6 +261,18 @@ class BrowserBottomBarTest {
             calls.clear()
             rule.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.OnLongClick)
             assertEquals(tag, listOf(expected), calls)
+        }
+    }
+
+    // --- Spec 011 AC9: ChromeButton dùng PixelIconButton ---
+
+    @Test
+    fun spec011_ac9_everyChromeButton_exposesCornerPercent_fromPixelIconButton() {
+        show(BrowserUiState(canGoBack = true, canGoForward = false, tabCount = 1))
+        buttons.forEach { tag ->
+            val config = rule.onNodeWithTag(tag).fetchSemanticsNode().config
+            assertTrue("$tag phải là PixelIconButton (có CornerPercent)", PixelSemantics.CornerPercent in config)
+            assertEquals("$tag khi nghỉ bo 50%", 50, config[PixelSemantics.CornerPercent])
         }
     }
 }

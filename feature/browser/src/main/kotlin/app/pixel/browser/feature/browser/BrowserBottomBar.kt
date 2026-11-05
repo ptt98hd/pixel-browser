@@ -1,8 +1,6 @@
 package app.pixel.browser.feature.browser
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -13,7 +11,6 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,6 +39,7 @@ import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.pixel.browser.core.ui.PixelIconButton
 
 /** Số tab tối đa hiển thị trên badge; lớn hơn thì hiện `99+` (AC17). */
 private const val MAX_BADGE_COUNT = 99
@@ -115,10 +113,10 @@ fun BrowserBottomBar(
 }
 
 /**
- * Nút của bottom bar. [enabled] chỉ áp dụng cho tap (semantics `disabled()`, tap no-op); long-press và
- * custom accessibility action luôn hoạt động (spec 005, Edge cases / AC23).
+ * Nút của bottom bar trên [PixelIconButton] (đổi hình khi nhấn, spec 011 AC9). [enabled] chỉ áp dụng cho tap
+ * (semantics `disabled()`, tap no-op); long-press và custom accessibility action luôn hoạt động (spec 005,
+ * Edge cases / AC23).
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RowScope.ChromeButton(
     tag: String,
@@ -129,17 +127,16 @@ private fun RowScope.ChromeButton(
     enabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
-    Box(
+    PixelIconButton(
+        onClick = onClick,
+        enabled = enabled,
+        onLongClick = onLongClick,
+        onLongClickLabel = longPressLabel,
         modifier =
             Modifier
                 .weight(1f)
-                .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                 .padding(horizontal = 4.dp)
-                .combinedClickable(
-                    onClick = { if (enabled) onClick() },
-                    onLongClick = onLongClick,
-                    onLongClickLabel = longPressLabel,
-                ).semantics {
+                .semantics {
                     contentDescription = description
                     if (!enabled) disabled()
                     customActions =
@@ -150,7 +147,6 @@ private fun RowScope.ChromeButton(
                             },
                         )
                 }.testTag(tag),
-        contentAlignment = Alignment.Center,
     ) {
         val color = LocalContentColor.current
         CompositionLocalProvider(
