@@ -4,9 +4,9 @@ local.properties
 *.iml
 .idea/
 .kotlin/
-.claude/
 captures/
 *.jks
 *.keystore
 keystore.properties
 .DS_Store
+.claude/settings.local.json
