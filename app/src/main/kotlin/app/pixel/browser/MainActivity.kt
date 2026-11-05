@@ -7,10 +7,20 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import app.pixel.browser.core.data.ThemeSettings
 import app.pixel.browser.core.engine.WebViewEngineSession
 import app.pixel.browser.core.tabs.TabManager
+import app.pixel.browser.core.ui.PixelTheme
+import app.pixel.browser.core.ui.resolveDarkTheme
 import app.pixel.browser.feature.browser.BrowserRoute
 import app.pixel.browser.feature.browser.BrowserViewModel
 import app.pixel.browser.feature.browser.intent.AndroidExternalAppLauncher
@@ -48,8 +58,19 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // Bottom bar luôn có nền surfaceContainer sau inset nên không cần lớp scrim của hệ thống (spec 011 AC13).
+        window.isNavigationBarContrastEnforced = false
         setContent {
-            PixelBrowserTheme { BrowserRoute(viewModel, onReturnToCaller = { moveTaskToBack(true) }) }
+            val settings by app.themeSettings.collectAsState()
+            PixelTheme(settings) {
+                SystemBarsEffect(dark = resolveDarkTheme(settings.mode, isSystemInDarkTheme()))
+                BrowserRoute(
+                    viewModel,
+                    onReturnToCaller = { moveTaskToBack(true) },
+                    themeSettings = settings,
+                    onThemeChange = ::onThemeChange,
+                )
+            }
         }
         // Spec 006 AC16: intent chỉ xử lý ở lần tạo đầu; recreate (xoay, process death) không xử lý lại.
         if (savedInstanceState == null) handleIntent(intent)
@@ -66,6 +87,21 @@ class MainActivity : ComponentActivity() {
         if (intent == null) return
         val request = IncomingIntentResolver.resolve(IncomingIntent.from(intent), viewModel.searchEngine)
         viewModel.onIncomingIntent(request)
+    }
+
+    /** Đổi Sáng/Tối gây configuration change → Activity tạo lại; WebView nằm trong ViewModel nên giữ trang. */
+    private fun onThemeChange(next: ThemeSettings) = app.updateTheme { next }
+
+    /** Icon status/navigation bar tối trên nền sáng và ngược lại, theo theme đang hiển thị (spec 011 AC13). */
+    @Composable
+    private fun SystemBarsEffect(dark: Boolean) {
+        val view = LocalView.current
+        SideEffect {
+            WindowCompat.getInsetsController(window, view).apply {
+                isAppearanceLightStatusBars = !dark
+                isAppearanceLightNavigationBars = !dark
+            }
+        }
     }
 
     override fun onStop() {

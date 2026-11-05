@@ -29,6 +29,13 @@
     <!-- Menu -->
     <string name="browser_share">Chia sẻ liên kết</string>
 
+    <string name="browser_theme">Giao diện</string>
+    <string name="browser_theme_system">Theo hệ thống</string>
+    <string name="browser_theme_light">Sáng</string>
+    <string name="browser_theme_dark">Tối</string>
+    <string name="browser_theme_dynamic">Màu động</string>
+    <string name="browser_theme_dynamic_summary">Dùng màu từ hình nền</string>
+    <string name="browser_theme_done">Xong</string>
     <!-- Tab switcher -->
     <string name="browser_tabs_title">Thẻ</string>
     <string name="browser_close_tab">Đóng thẻ %1$s</string>

@@ -94,7 +94,7 @@ class UiModeNightModeController(context: Context) : NightModeController
 - Chế độ tương phản cao của hệ thống (Android 14+ contrast level): dynamic color đã phản ánh; scheme tĩnh không có biến thể tương phản (ghi nhận, làm ở B14 nếu cần).
 - Thanh điều hướng 3 nút: `isNavigationBarContrastEnforced = false` có thể làm nút khó thấy trên một số ROM → bottom bar luôn có nền `surfaceContainer` phía sau inset nên vẫn đủ tương phản.
 - Reduced motion cũng áp cho animation của 008 (indicator), 009 (shared element), 010 (kéo thả) khi các spec đó dùng `pixelSpring`.
-- DataStore chỉ có một instance mỗi file trong process (khai báo `preferencesDataStore` ở top-level trong `:app`), nếu không DataStore ném `IllegalStateException`.
+- DataStore chỉ có một instance mỗi file trong process (`PixelBrowserApplication.onCreate` tạo đúng một instance qua `createSettingsDataStore`; không dùng delegate `preferencesDataStore` top-level – xem "Quyết định (implementer)"), nếu không DataStore ném `IllegalStateException`.
 
 ## Không test được bằng Robolectric (instrumented / thủ công)
 - Màu dynamic thật theo hình nền, chuyển Sáng/Tối không nháy (splash/cửa sổ đúng màu ngay từ khi khởi động lạnh sau khi đổi). → thủ công emulator API 31 và 35+.
@@ -119,3 +119,13 @@ class UiModeNightModeController(context: Context) : NightModeController
 ## Quyết định (orchestrator, 2026-11-05)
 - Chấp nhận các đề xuất của spec-writer: giữ material3 theo BOM (1.4.0) với component tự viết; thêm `datastore-preferences` + `graphics-shapes`; shortcut mặc định Wikipedia/YouTube/GitHub/OpenStreetMap; chưa có Forward từ home; `undoClose` chỉ chọn lại tab nếu tab đó đang được chọn khi đóng (cập nhật spec 002 khi merge 009); pull-to-refresh có fallback `canScrollVertically(-1)` nếu `onOverScrolled` không được gọi.
 - Thứ tự: 007 → 010 → 009 → 008; 011 song song (011 tạo `:core:data` nếu làm trước 010).
+
+## Quyết định (implementer, 2026-11-06)
+- `PixelIconButton` thêm tham số tùy chọn cuối `onLongClickLabel: String? = null` (ngoài chữ ký trong spec) để bottom bar giữ nhãn trợ năng long-press của spec 005. Nút có `Role.Button`, ripple khi enabled, bo góc qua `graphicsLayer` (animation không gây recompose), kích thước tối thiểu 48dp (`sizeIn`, không ép `size`) để `weight(1f)` của bottom bar vẫn áp dụng.
+- AC8 theo test: kịch bản "down + 500ms, up → onClick 1 lần" dùng nút không có `onLongClick` (500ms vượt long-press timeout).
+- `PixelLoadingIndicator`: `Morph` (graphics-shapes) giữa "cookie" 7 cánh và ngũ giác bo tròn + xoay liên tục, màu `colorScheme.primary`. Chưa thay `LinearProgressIndicator` trong top bar vì đó là tiến độ xác định (A05); indicator sẵn sàng cho 010/các màn chờ vô định.
+- `PixelColors`: giá trị tonal-spot của Material Theme Builder cho seed #3A5BA0 (bản 2024, onPrimaryContainer tone 30 ở light).
+- DataStore: không dùng delegate `preferencesDataStore` top-level (bị chia sẻ giữa các test Robolectric); `PixelBrowserApplication.onCreate` tạo đúng một DataStore (`createSettingsDataStore` + `preferencesDataStoreFile("settings")`) trên scope IO riêng, rồi `bindThemeStore(store, ioScope)`. `bindThemeStore` hủy lần gắn trước và chỉ lần gắn hiện tại được ghi `themeSettings`; `IOException` khi đọc bị nuốt (giữ giá trị hiện tại). `DataStoreThemeSettingsStore.settings` thử lại `IOException` tối đa 3 lần (trễ 100/200/300ms); vẫn lỗi thì phát mặc định nếu chưa nạp được gì, đã nạp thì giữ giá trị cũ. `nightModeController` là `lateinit`, khởi tạo trong `onCreate`.
+- Đổi theme qua `PixelBrowserApplication.updateTheme(transform)` (review): đặt `themeSettings` ngay trên main (lạc quan), gọi `NightModeController` chỉ khi `mode` khác giá trị hiện tại, rồi ghi store trên `ioScope` (sống qua Activity tạo lại); `IOException` khi ghi chỉ ghi log. Trong lúc còn lần ghi chờ, giá trị store phát ra bị bỏ qua (tránh nháy giá trị cũ). `ThemeDialog` tính giá trị tiếp theo từ lựa chọn mới nhất trong dialog nên hai lần chạm nhanh không dùng giá trị cũ. `PixelIconButton` công bố `disabled()` khi `enabled = false`. System bars đặt bằng `SideEffect`; `isNavigationBarContrastEnforced = false` đặt ngay sau `enableEdgeToEdge()`.
+- Chọn lại đúng chế độ đang chọn trong `ThemeDialog` chỉ đóng dialog, không gọi `onThemeChange`.
+- Menu item Theme dùng icon "contrast" vẽ bằng `ImageVector` (material-icons-core không có palette/contrast), không thêm `material-icons-extended`.

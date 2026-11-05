@@ -11,12 +11,17 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 
 /**
- * Menu tối thiểu: Reload, New tab, Share (Share disabled khi URL rỗng/`about:blank`) và "Đặt làm trình duyệt
- * mặc định" khi [showSetDefault] (spec 006 AC18).
+ * Menu tối thiểu: Reload, New tab, Share (Share disabled khi URL rỗng/`about:blank`), Theme (mở `ThemeDialog`,
+ * spec 011) và "Đặt làm trình duyệt mặc định" khi [showSetDefault] (spec 006 AC18).
  */
 @Composable
 fun BrowserMenu(
@@ -28,6 +33,7 @@ fun BrowserMenu(
     onShare: () -> Unit,
     showSetDefault: Boolean = false,
     onSetDefault: () -> Unit = {},
+    onTheme: () -> Unit = {},
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         DropdownMenuItem(
@@ -57,5 +63,30 @@ fun BrowserMenu(
                 modifier = Modifier.testTag(BrowserTestTags.MENU_SET_DEFAULT),
             )
         }
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.browser_theme)) },
+            onClick = onTheme,
+            leadingIcon = { Icon(ThemeIcon, contentDescription = null) },
+            modifier = Modifier.testTag(BrowserTestTags.MENU_THEME),
+        )
     }
+}
+
+/** Icon "contrast" (Material Symbols, Apache-2.0) – nửa hình tròn tô đậm. Không có trong material-icons-core. */
+private val ThemeIcon: ImageVector by lazy {
+    ImageVector
+        .Builder(
+            name = "Contrast",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).addPath(
+            pathData =
+                addPathNodes(
+                    "M12,22c5.52,0 10,-4.48 10,-10S17.52,2 12,2S2,6.48 2,12S6.48,22 12,22z" +
+                        "M13,4.07c3.94,0.49 7,3.85 7,7.93s-3.05,7.44 -7,7.93V4.07z",
+                ),
+            fill = SolidColor(Color.Black),
+        ).build()
 }

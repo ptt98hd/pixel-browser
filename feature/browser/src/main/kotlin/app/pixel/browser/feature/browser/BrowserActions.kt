@@ -1,5 +1,6 @@
 package app.pixel.browser.feature.browser
 
+import app.pixel.browser.core.data.ThemeSettings
 import app.pixel.browser.core.omnibox.Suggestion
 
 /** Callback hành động của chrome (spec 005). Mặc định no-op để test composable độc lập. */
@@ -26,4 +27,6 @@ data class BrowserActions(
     val onExternalAppDecision: (String, Long, Boolean) -> Unit = { _, _, _ -> },
     /** Back ở gốc lịch sử của tab mở từ intent: đóng tab và quay về app gọi (spec 006 AC14). */
     val onReturnToCaller: () -> Unit = {},
+    /** Người dùng đổi theme trong `ThemeDialog` (spec 011). */
+    val onThemeChange: (ThemeSettings) -> Unit = {},
 )
