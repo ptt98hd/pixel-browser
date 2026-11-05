@@ -90,3 +90,13 @@ Tất cả là JUnit trên JVM trong `:core:omnibox` (không cần Robolectric, 
 - `localhost`/IP literal → `http://`; còn lại → `https://`.
 - Chỉ cho phép `about:blank` trong nhóm `about:`; engine (`isValidWebUrl`) phải chấp nhận `about:blank` khi làm spec 005.
 - A04 được đánh ✅ khi spec này xong; gợi ý từ lịch sử/bookmark chuyển sang B01/B02 (qua `SuggestionProvider`).
+- `Blocked.input` chứa input **đã trim** (không phải chuỗi gốc).
+- `SuggestionAggregator` implement `SuggestionProvider` (có thể lồng nhau).
+- `Suggestion.title` là text cho người đọc: `GoTo` → URL đã chuẩn hóa; `Search` → `"Search for <query>"` (UI spec 005 có thể bản địa hóa).
+- Với scheme `http(s)://` tường minh, authority chứa `@` (userinfo) → `Search` (chống phishing `https://google.com@evil.com`); host một label (`https://intranet`) được chấp nhận.
+- Scheme nguy hiểm/`about:` được kiểm tra trước luật `host:port`: `javascript:1` → `Blocked`, không coi là host `javascript` port 1.
+- IPv6 không ngoặc có nhóm đầu là chữ hex (`fe80::1`, `dead:beef::1`) không bị coi là scheme lạ → `Navigate("http://[fe80::1]")`.
+- IDN phải round-trip (`IDN.toUnicode(IDN.toASCII(host)) == host` đã lowercase), nếu không → `Search` (vd `faß.de`, host chứa variation selector U+FE0F).
+- `\` kết thúc authority như `/` (theo WHATWG URL) trong cả classifier lẫn `UrlDisplay.host`: `https://evil.com\@google.com` hiển thị `evil.com`.
+- IPv4 có octet số 0 đứng đầu (`192.168.01.1`) → `Search` (tránh hiểu nhầm octal); octet `0` hợp lệ.
+- `SearchEngine` template: authority phải là host hợp lệ (không userinfo, không `%s` trong authority), nếu không ném `IllegalArgumentException`.
