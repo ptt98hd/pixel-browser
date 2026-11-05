@@ -35,4 +35,15 @@
     <string name="browser_close_tab">Close tab %1$s</string>
     <string name="browser_untitled_tab">New tab</string>
     <string name="browser_page_placeholder">Page content</string>
+    <!-- Spec 006: intent, trình duyệt mặc định, app ngoài -->
+    <string name="browser_set_default">Set as default browser</string>
+    <string name="browser_message_intent_rejected">This link can’t be opened in Pixel</string>
+    <string name="browser_message_external_not_found">No app can open this link</string>
+    <string name="browser_message_external_blocked">This link was blocked for your safety</string>
+    <string name="browser_message_settings_unavailable">Couldn’t open default app settings</string>
+    <string name="browser_external_title">Open in another app?</string>
+    <string name="browser_external_message_scheme">This page wants to open a “%1$s” link in another app.</string>
+    <string name="browser_external_message_package">This page wants to open the app %1$s.</string>
+    <string name="browser_external_open">Open</string>
+    <string name="browser_external_cancel">Cancel</string>
 </resources>

@@ -1,11 +1,18 @@
 package app.pixel.browser.feature.browser
 
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.MutableContextWrapper
+import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,9 +26,11 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -37,6 +46,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.pixel.browser.core.engine.EngineSession
 import app.pixel.browser.core.omnibox.UrlDisplay
+import app.pixel.browser.feature.browser.intent.DefaultBrowserController
+import app.pixel.browser.feature.browser.intent.RoleManagerDefaultBrowser
+import app.pixel.browser.feature.browser.intent.defaultAppsSettingsIntent
 import kotlinx.coroutines.launch
 
 /** Có thể chia sẻ [url] không: không chia sẻ URL rỗng/trang trống (AC26). */
@@ -57,12 +69,14 @@ fun BrowserScreen(
     var tabsOpen by rememberSaveable { mutableStateOf(false) }
 
     // AC31: (a) sheet/menu → đóng; (b) đang sửa → hủy sửa; (c) có lịch sử → goBack; (d) không chặn.
-    BackHandler(enabled = menuOpen || tabsOpen || state.isEditingUrl || state.canGoBack) {
+    // Spec 006 AC14: tab mở từ intent, hết lịch sử → đóng tab và quay về app gọi.
+    BackHandler(enabled = menuOpen || tabsOpen || state.isEditingUrl || state.canGoBack || state.isExternalTab) {
         when {
             tabsOpen -> tabsOpen = false
             menuOpen -> menuOpen = false
             state.isEditingUrl -> actions.onCancelEditing()
-            else -> actions.onBack()
+            state.canGoBack -> actions.onBack()
+            else -> actions.onReturnToCaller()
         }
     }
 
@@ -108,10 +122,21 @@ fun BrowserScreen(
                             menuOpen = false
                             actions.onShare()
                         },
+                        showSetDefault = state.showSetDefaultBrowser,
+                        onSetDefault = {
+                            menuOpen = false
+                            actions.onSetDefaultBrowser()
+                        },
                     )
                 }
             }
         }
+    }
+
+    val prompt = state.externalPrompt
+    val promptTabId = state.externalPromptTabId
+    if (prompt != null && promptTabId != null) {
+        ExternalAppDialog(request = prompt) { open -> actions.onExternalAppDecision(promptTabId, prompt.id, open) }
     }
 
     if (tabsOpen) {
@@ -136,21 +161,40 @@ fun BrowserScreen(
 private fun messageText(code: String): String =
     when (code) {
         BrowserMessages.BLOCKED_INPUT -> stringResource(R.string.browser_message_blocked)
+        BrowserMessages.INTENT_REJECTED -> stringResource(R.string.browser_message_intent_rejected)
+        BrowserMessages.EXTERNAL_APP_NOT_FOUND -> stringResource(R.string.browser_message_external_not_found)
+        BrowserMessages.EXTERNAL_APP_BLOCKED -> stringResource(R.string.browser_message_external_blocked)
+        BrowserMessages.SETTINGS_UNAVAILABLE -> stringResource(R.string.browser_message_settings_unavailable)
         else -> code
     }
 
-/** Nối [BrowserViewModel] ↔ [BrowserScreen]; hiển thị `view` của session được chọn, mở chooser khi Share. */
+/**
+ * Nối [BrowserViewModel] ↔ [BrowserScreen]; hiển thị `view` của session được chọn, mở chooser khi Share.
+ *
+ * Spec 006: [defaultBrowserController] (mặc định [RoleManagerDefaultBrowser]) được hỏi lại ở mỗi `ON_RESUME`;
+ * [onReturnToCaller] được gọi sau khi tab mở từ intent bị đóng bằng Back (mặc định `moveTaskToBack(true)` trên
+ * Activity chứa composable).
+ */
 @Composable
 fun BrowserRoute(
     viewModel: BrowserViewModel,
     modifier: Modifier = Modifier,
+    defaultBrowserController: DefaultBrowserController? = null,
+    onReturnToCaller: (() -> Unit)? = null,
 ) {
     val state by viewModel.uiState.collectAsState()
     val session by viewModel.selectedSession.collectAsState()
     val context = LocalContext.current
     val shareTitle = stringResource(R.string.browser_share)
+    val controller =
+        defaultBrowserController ?: remember(context) { RoleManagerDefaultBrowser(context.applicationContext) }
+    val returnToCaller by rememberUpdatedState(
+        onReturnToCaller ?: { context.findActivity()?.moveTaskToBack(true) },
+    )
+    val setDefault = rememberDefaultBrowserRequest(viewModel, controller)
+    TrackAppVisibility(viewModel)
     val actions =
-        remember(viewModel, context, shareTitle) {
+        remember(viewModel, context, shareTitle, setDefault) {
             BrowserActions(
                 onBack = viewModel::onBack,
                 onForward = viewModel::onForward,
@@ -176,12 +220,110 @@ fun BrowserRoute(
                 onSelectTab = viewModel::onSelectTab,
                 onCloseTab = viewModel::onCloseTab,
                 onMessageShown = viewModel::onMessageShown,
+                onSetDefaultBrowser = setDefault,
+                onExternalAppDecision = { tabId, requestId, open ->
+                    viewModel.onExternalAppDecision(tabId, requestId, open)
+                },
+                onReturnToCaller = {
+                    viewModel.onReturnToCaller()
+                    returnToCaller()
+                },
             )
         }
     BrowserScreen(state = state, actions = actions, modifier = modifier) {
         EngineContainer(session = session)
     }
 }
+
+/**
+ * Trình duyệt mặc định (spec 006 AC18–AC19): tính lại ở mỗi `ON_RESUME`, trả về hành động của mục menu. Mục
+ * menu chỉ hiện khi role khả dụng và chưa giữ. Sau [MAX_ROLE_CANCELS] lần hủy liên tiếp (RoleManager có thể tự
+ * hủy khi người dùng chọn "Không hỏi lại"), mở Settings thay vì hỏi role. Bộ đếm chỉ nằm trong state UI.
+ */
+@Composable
+private fun rememberDefaultBrowserRequest(
+    viewModel: BrowserViewModel,
+    controller: DefaultBrowserController,
+): () -> Unit {
+    val context = LocalContext.current
+    var roleCancels by rememberSaveable { mutableIntStateOf(0) }
+    val refresh = {
+        viewModel.onDefaultBrowserChanged(isDefault = !controller.isRoleAvailable || controller.isDefault())
+    }
+    val roleLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            when {
+                controller.isDefault() -> roleCancels = 0
+                result.resultCode == Activity.RESULT_CANCELED -> roleCancels++
+            }
+            refresh()
+        }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, controller, viewModel) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) refresh() }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    return remember(context, controller, viewModel, roleLauncher) {
+        {
+            val useRole = controller.isRoleAvailable && roleCancels < MAX_ROLE_CANCELS
+            val launched =
+                useRole &&
+                    try {
+                        roleLauncher.launch(controller.requestIntent())
+                        true
+                    } catch (_: ActivityNotFoundException) {
+                        false
+                    }
+            if (!launched && !openDefaultAppsSettings(context)) viewModel.onDefaultBrowserSettingsUnavailable()
+        }
+    }
+}
+
+private const val MAX_ROLE_CANCELS = 2
+
+/** Báo cho ViewModel app có hiển thị (≥ STARTED) không: chỉ mở thẳng app ngoài khi đang hiển thị (spec 006). */
+@Composable
+private fun TrackAppVisibility(viewModel: BrowserViewModel) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val lifecycle = lifecycleOwner.lifecycle
+        viewModel.onAppVisibilityChanged(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+        val observer =
+            LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_START -> viewModel.onAppVisibilityChanged(true)
+                    Lifecycle.Event.ON_STOP -> viewModel.onAppVisibilityChanged(false)
+                    else -> Unit
+                }
+            }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+}
+
+/** Mở Settings → Default apps; ROM thiếu màn hình đó → Settings chung. false nếu không mở được gì. */
+private fun openDefaultAppsSettings(context: Context): Boolean =
+    listOf(defaultAppsSettingsIntent(), Intent(Settings.ACTION_SETTINGS)).any { intent ->
+        if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(intent)
+            true
+        } catch (_: ActivityNotFoundException) {
+            false
+        } catch (_: SecurityException) {
+            false
+        }
+    }
+
+internal tailrec fun Context.findActivity(): Activity? =
+    when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
 
 /** Chooser bọc `ACTION_SEND` text/plain với URL (và title làm subject nếu có) – AC26. */
 internal fun shareIntent(

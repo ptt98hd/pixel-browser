@@ -2,7 +2,10 @@ package app.pixel.browser.feature.browser
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.pixel.browser.core.engine.EngineRequest
+import app.pixel.browser.core.engine.EngineResponse
 import app.pixel.browser.core.engine.EngineSession
+import app.pixel.browser.core.engine.isValidWebUrl
 import app.pixel.browser.core.omnibox.DefaultSuggestionProvider
 import app.pixel.browser.core.omnibox.OmniboxClassifier
 import app.pixel.browser.core.omnibox.OmniboxResult
@@ -15,6 +18,9 @@ import app.pixel.browser.core.omnibox.homeUrl
 import app.pixel.browser.core.tabs.HOME_URL
 import app.pixel.browser.core.tabs.TabManager
 import app.pixel.browser.core.tabs.TabsSnapshot
+import app.pixel.browser.feature.browser.intent.ExternalAppLauncher
+import app.pixel.browser.feature.browser.intent.ExternalLaunchResult
+import app.pixel.browser.feature.browser.intent.IncomingRequest
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +33,18 @@ import kotlinx.coroutines.launch
 object BrowserMessages {
     /** Input omnibox bị chặn (scheme nguy hiểm/không hỗ trợ, spec 004). */
     const val BLOCKED_INPUT = "blocked_input"
+
+    /** Intent từ app khác bị từ chối (spec 006 AC13). */
+    const val INTENT_REJECTED = "intent_rejected"
+
+    /** Không có app nào mở được link ngoài (spec 006 AC23). */
+    const val EXTERNAL_APP_NOT_FOUND = "external_app_not_found"
+
+    /** Link ngoài bị chặn vì lý do an toàn (spec 006 AC23). */
+    const val EXTERNAL_APP_BLOCKED = "external_app_blocked"
+
+    /** Không mở được màn hình cài đặt trình duyệt mặc định (spec 006). */
+    const val SETTINGS_UNAVAILABLE = "settings_unavailable"
 }
 
 /**
@@ -40,6 +58,9 @@ class BrowserViewModel(
     private val tabManager: TabManager,
     val searchEngine: SearchEngine = SearchEngines.Default,
     private val suggestionProvider: SuggestionProvider = DefaultSuggestionProvider(searchEngine),
+    private val externalAppLauncher: ExternalAppLauncher = ExternalAppLauncher { ExternalLaunchResult.Rejected },
+    /** Đồng hồ đơn điệu (ms) cho throttle mở app ngoài. */
+    private val clock: () -> Long = { System.nanoTime() / NANOS_PER_MILLI },
 ) : ViewModel() {
     /** Trang home tạm thời = trang chủ search engine (spec 004 AC18) cho tới A10. */
     val homeUrl: String get() = searchEngine.homeUrl
@@ -58,6 +79,30 @@ class BrowserViewModel(
     private var suggestionJob: Job? = null
     private var sessionsJob: Job? = null
     private var observedSessions: List<EngineSession>? = null
+
+    /** Tab mở từ intent ngoài (spec 006 AC14), chỉ trong bộ nhớ. */
+    private val externalTabIds = mutableSetOf<String>()
+
+    /** Tab home mà ViewModel đã tự tải [homeUrl] vào; được tái dùng cho intent nếu chưa có lịch sử (AC13). */
+    private var homeTabId: String? = null
+
+    /** Trạng thái xử lý request `ExternalApp` của từng session sống (spec 006 AC23–AC25). */
+    private class ExternalAppState {
+        /** Id request lớn nhất đã xử lý. */
+        var lastSeen = 0L
+
+        /** URL trang lúc người dùng hủy hộp thoại; khác null → bỏ request không gesture cho tới trang mới. */
+        var suppressedAtUrl: String? = null
+
+        /** Thời điểm (theo [clock]) lần mở thẳng gần nhất. */
+        var lastDirectLaunch: Long? = null
+    }
+
+    private val externalApps = HashMap<EngineSession, ExternalAppState>()
+    private var isAppVisible = true
+    private var showSetDefaultBrowser = false
+    private var recomputing = false
+    private var recomputePending = false
 
     init {
         ensureSelectedLoaded()
@@ -171,6 +216,99 @@ class BrowserViewModel(
         recompute()
     }
 
+    /**
+     * Intent từ app khác (spec 006 AC13): mở URL ở tab mới được chọn, hoặc trong tab home ban đầu nếu tab đó
+     * chưa có lịch sử. Tab nhận URL được ghi nhận để Back ở gốc lịch sử quay về app gọi (AC14).
+     */
+    fun onIncomingIntent(request: IncomingRequest) {
+        val url =
+            when (request) {
+                is IncomingRequest.OpenUrl -> request.url
+                is IncomingRequest.Search -> request.url
+                IncomingRequest.Resume -> return
+                is IncomingRequest.Rejected -> null
+            }
+        stopEditing()
+        if (url == null || !isValidWebUrl(url)) {
+            message = BrowserMessages.INTENT_REJECTED
+        } else {
+            val reusable = unusedHomeTab()
+            val id =
+                if (reusable != null) {
+                    tabManager.session(reusable)?.loadUrl(url)
+                    reusable
+                } else {
+                    tabManager.openTab(url).id
+                }
+            homeTabId = null
+            externalTabIds += id
+        }
+        recompute()
+    }
+
+    /**
+     * Back ở gốc lịch sử của tab mở từ intent (spec 006 AC14): đóng tab đó. Caller (Activity) sau đó đưa task
+     * về sau để quay lại app gọi. Không làm gì nếu tab đang chọn không mở từ intent hoặc còn lịch sử.
+     */
+    fun onReturnToCaller() {
+        val id = tabManager.selectedTabId.value ?: return
+        if (id !in externalTabIds || current()?.state?.value?.canGoBack == true) return
+        stopEditing()
+        externalTabIds -= id
+        tabManager.closeTab(id)
+        recompute()
+    }
+
+    /** Người dùng trả lời hộp thoại mở app ngoài của tab đang chọn (spec 006 AC24). */
+    fun onExternalAppDecision(
+        requestId: Long,
+        open: Boolean,
+    ) {
+        val tabId = tabManager.selectedTabId.value ?: return
+        onExternalAppDecision(tabId, requestId, open)
+    }
+
+    /**
+     * Người dùng trả lời hộp thoại mở app ngoài cho request [requestId] của tab [tabId] (spec 006 AC24). Không
+     * làm gì nếu tab đó không còn request này đang chờ. Hủy → các request không gesture tiếp theo của trang này
+     * bị bỏ (`Dismiss(suppressFurther = true)`) cho tới khi trang đổi hoặc có request có gesture.
+     */
+    fun onExternalAppDecision(
+        tabId: String,
+        requestId: Long,
+        open: Boolean,
+    ) {
+        val session = tabManager.session(tabId) ?: return
+        val request =
+            session.requests.value
+                .filterIsInstance<EngineRequest.ExternalApp>()
+                .firstOrNull { it.id == requestId } ?: return
+        if (!session.respond(request.id, EngineResponse.Dismiss())) return
+        if (open) {
+            launchExternal(session, request)
+        } else {
+            externalApps.getOrPut(session, ::ExternalAppState).suppressedAtUrl = session.state.value.url
+        }
+        recompute()
+    }
+
+    /** App hiển thị (≥ STARTED) hay không; khi ẩn, request có gesture đi qua hộp thoại thay vì mở thẳng. */
+    fun onAppVisibilityChanged(visible: Boolean) {
+        isAppVisible = visible
+    }
+
+    /** Không mở được Settings để đặt trình duyệt mặc định (spec 006, edge case ROM lạ). */
+    fun onDefaultBrowserSettingsUnavailable() {
+        message = BrowserMessages.SETTINGS_UNAVAILABLE
+        recompute()
+    }
+
+    /** Trạng thái trình duyệt mặc định được tính lại (spec 006 AC18). */
+    fun onDefaultBrowserChanged(isDefault: Boolean) {
+        showSetDefaultBrowser = !isDefault
+        recompute()
+    }
+
     /** Ảnh chụp tab để caller ghi xuống đĩa ngoài main thread (spec 002). Gọi trên main thread. */
     fun tabsSnapshot(): TabsSnapshot = tabManager.snapshot()
 
@@ -179,6 +317,101 @@ class BrowserViewModel(
     }
 
     private fun current(): EngineSession? = tabManager.selectedTabId.value?.let(tabManager::session)
+
+    /** Tab home ban đầu, đang chọn, chưa có lịch sử và chưa rời [homeUrl] (AC13). */
+    private fun unusedHomeTab(): String? {
+        val id = homeTabId ?: return null
+        if (id != tabManager.selectedTabId.value) return null
+        val st = tabManager.session(id)?.state?.value ?: return null
+        return id.takeIf { !st.canGoBack && (st.url.isEmpty() || st.url == homeUrl) }
+    }
+
+    /**
+     * Xử lý request `ExternalApp` mới của mọi session (spec 006 AC23–AC25 + review):
+     * - URI bị launcher từ chối ([ExternalAppLauncher.describe] null) → bỏ, báo "blocked", không hỏi.
+     * - Session đã có request đang chờ, hoặc vừa mở thẳng trong cùng đợt → bỏ ngay (chống spam).
+     * - Có gesture, tab đang chọn, app hiển thị, và chưa mở thẳng trong [DIRECT_LAUNCH_INTERVAL_MS] → mở luôn.
+     * - Không gesture sau khi người dùng hủy trên trang này → `Dismiss(suppressFurther = true)`.
+     * - Còn lại giữ trong hàng đợi: tab đang chọn hiện hộp thoại, tab nền chờ tới khi được chọn.
+     */
+    private fun processExternalRequests() {
+        val selected = current()
+        for (session in observedSessions.orEmpty()) {
+            val st = externalApps.getOrPut(session, ::ExternalAppState)
+            if (st.suppressedAtUrl != null && st.suppressedAtUrl != session.state.value.url) st.suppressedAtUrl = null
+            val pending = session.requests.value.filterIsInstance<EngineRequest.ExternalApp>()
+            val seen = st.lastSeen
+            val fresh = pending.filter { it.id > seen }
+            if (fresh.isEmpty()) continue
+            st.lastSeen = fresh.maxOf { it.id }
+            var busy = pending.any { it.id <= seen }
+            for (request in fresh) {
+                if (request.hasUserGesture) st.suppressedAtUrl = null
+                when {
+                    externalAppLauncher.describe(request.uri) == null -> {
+                        session.respond(request.id, EngineResponse.Dismiss())
+                        message = BrowserMessages.EXTERNAL_APP_BLOCKED
+                    }
+
+                    busy -> {
+                        session.respond(request.id, EngineResponse.Dismiss())
+                    }
+
+                    request.hasUserGesture && session === selected && canLaunchDirectly(st) -> {
+                        session.respond(request.id, EngineResponse.Dismiss())
+                        st.lastDirectLaunch = clock()
+                        launchExternal(session, request)
+                        busy = true
+                    }
+
+                    !request.hasUserGesture && st.suppressedAtUrl != null -> {
+                        session.respond(request.id, EngineResponse.Dismiss(suppressFurther = true))
+                    }
+
+                    else -> {
+                        busy = true
+                    }
+                }
+            }
+        }
+    }
+
+    private fun canLaunchDirectly(st: ExternalAppState): Boolean {
+        val last = st.lastDirectLaunch
+        return isAppVisible && (last == null || clock() - last >= DIRECT_LAUNCH_INTERVAL_MS)
+    }
+
+    private fun launchExternal(
+        session: EngineSession,
+        request: EngineRequest.ExternalApp,
+    ) {
+        when (val result = externalAppLauncher.launch(request.uri)) {
+            ExternalLaunchResult.Launched -> {
+                Unit
+            }
+
+            is ExternalLaunchResult.NotFound -> {
+                val fallback = result.fallbackUrl?.takeIf(::isValidWebUrl)
+                if (fallback != null) {
+                    session.loadUrl(fallback)
+                } else {
+                    message = BrowserMessages.EXTERNAL_APP_NOT_FOUND
+                }
+            }
+
+            is ExternalLaunchResult.OpenInBrowser -> {
+                if (isValidWebUrl(result.url)) {
+                    session.loadUrl(result.url)
+                } else {
+                    message = BrowserMessages.EXTERNAL_APP_BLOCKED
+                }
+            }
+
+            ExternalLaunchResult.Rejected -> {
+                message = BrowserMessages.EXTERNAL_APP_BLOCKED
+            }
+        }
+    }
 
     private fun navigate(url: String) {
         stopEditing()
@@ -200,6 +433,7 @@ class BrowserViewModel(
         val st = session.state.value
         if (tab.url == HOME_URL && st.url.isEmpty() && !st.isLoading && st.error == null) {
             session.loadUrl(homeUrl)
+            homeTabId = id
         }
     }
 
@@ -209,15 +443,45 @@ class BrowserViewModel(
         // Gán trước khi launch: collector UNDISPATCHED gọi lại recompute() ngay và phải thấy danh sách mới.
         if (sessions == observedSessions) return
         observedSessions = sessions
+        externalApps.keys.retainAll(sessions.toSet())
         sessionsJob?.cancel()
         sessionsJob =
             viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
-                if (sessions.isNotEmpty()) merge(*sessions.map { it.state }.toTypedArray()).collect { recompute() }
+                if (sessions.isNotEmpty()) {
+                    val flows = sessions.flatMap { listOf(it.state, it.requests) }
+                    merge(*flows.toTypedArray()).collect { recompute() }
+                }
             }
     }
 
+    /**
+     * Tính lại [uiState]. Không tái nhập: phản hồi request / tải URL bên trong có thể làm flow của session phát
+     * đồng bộ và gọi lại hàm này; lời gọi lồng chỉ đánh dấu để vòng ngoài tính lại.
+     */
     private fun recompute() {
-        observeSessions()
+        if (recomputing) {
+            recomputePending = true
+            return
+        }
+        recomputing = true
+        try {
+            do {
+                recomputePending = false
+                observeSessions()
+                processExternalRequests()
+                publishState()
+            } while (recomputePending)
+        } finally {
+            recomputing = false
+        }
+    }
+
+    private fun publishState() {
+        val ids =
+            tabManager.tabs.value
+                .map { it.id }
+                .toSet()
+        externalTabIds.retainAll(ids)
         val selectedId = tabManager.selectedTabId.value
         val session = selectedId?.let(tabManager::session)
         val st = session?.state?.value
@@ -231,6 +495,11 @@ class BrowserViewModel(
                 )
             }
         val url = st?.url ?: tabs.firstOrNull { it.id == selectedId }?.url.orEmpty()
+        val prompt =
+            session
+                ?.requests
+                ?.value
+                ?.firstNotNullOfOrNull { it as? EngineRequest.ExternalApp }
         _selectedSession.value = session
         _uiState.value =
             BrowserUiState(
@@ -248,6 +517,17 @@ class BrowserViewModel(
                 isEditingUrl = isEditing,
                 suggestions = suggestions,
                 message = message,
+                showSetDefaultBrowser = showSetDefaultBrowser,
+                externalPrompt = prompt,
+                externalPromptTabId = selectedId.takeIf { prompt != null },
+                isExternalTab = selectedId != null && selectedId in externalTabIds,
             )
+    }
+
+    private companion object {
+        const val NANOS_PER_MILLI = 1_000_000L
+
+        /** Tối đa một lần mở thẳng app ngoài mỗi khoảng này cho mỗi tab; request thêm phải qua hộp thoại. */
+        const val DIRECT_LAUNCH_INTERVAL_MS = 1_000L
     }
 }

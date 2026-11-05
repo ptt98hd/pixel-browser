@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Pixel Browser</string>
+    <string name="process_text_label">Tìm bằng Pixel</string>
 </resources>

@@ -40,6 +40,13 @@ class WebViewEngineSessionTest : EngineSessionContractTest() {
 
     override fun EngineSession.emitPageStarted(url: String) = (this as WebViewEngineSession).dispatchPageStarted(url)
 
+    override fun EngineSession.emitNavigation(
+        url: String,
+        isMainFrame: Boolean,
+        hasGesture: Boolean,
+        isRedirect: Boolean,
+    ): Boolean = (this as WebViewEngineSession).dispatchNavigation(url, isMainFrame, hasGesture, isRedirect)
+
     @Test
     fun defaultSettings_areSecure() {
         val s = WebViewEngineSession(context).webView.settings

@@ -20,4 +20,10 @@ data class BrowserActions(
     val onSelectTab: (String) -> Unit = {},
     val onCloseTab: (String) -> Unit = {},
     val onMessageShown: () -> Unit = {},
+    /** Mở hộp thoại/màn hình đặt trình duyệt mặc định (spec 006 AC19). */
+    val onSetDefaultBrowser: () -> Unit = {},
+    /** Trả lời hộp thoại mở app ngoài: (tabId, requestId, open) – spec 006 AC24. */
+    val onExternalAppDecision: (String, Long, Boolean) -> Unit = { _, _, _ -> },
+    /** Back ở gốc lịch sử của tab mở từ intent: đóng tab và quay về app gọi (spec 006 AC14). */
+    val onReturnToCaller: () -> Unit = {},
 )
