@@ -6,7 +6,7 @@ Trạng thái: ⬜ chưa làm · 🟨 đang làm · ✅ xong. Mỗi feature có 
 ## A. Lõi duyệt web (M1)
 | ID | Feature | Status |
 |---|---|---|
-| A01 | WebView wrapper (interface + fake để test), settings an toàn (JS, DOM storage, safe browsing, mixed content) | 🟨 |
+| A01 | WebView wrapper (interface + fake để test), settings an toàn (JS, DOM storage, safe browsing, mixed content) | ✅ |
 | A02 | Quản lý nhiều tab, giữ state khi chuyển tab/xoay màn hình/process death | 🟨 |
 | A03 | Back/forward không reload (giữ WebView + history, restore scroll) | 🟨 |
 | A04 | Omnibox: nhập URL/tìm kiếm, chuẩn hóa URL, gợi ý (lịch sử/bookmark/search) | ⬜ |
