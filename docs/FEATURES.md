@@ -63,7 +63,7 @@ Trạng thái: ⬜ chưa làm · 🟨 đang làm · ✅ xong. Mỗi feature có 
 | ID | Feature | Status |
 |---|---|---|
 | E01 | Repo, CI (test/lint/build), branch → PR → auto-merge, Conventional Commits | 🟨 |
-| E02 | Keystore release cố định + workflow release ký APK, verify bằng apksigner, cài thử emulator | ⬜ |
+| E02 | Keystore release cố định + workflow release ký APK, verify bằng apksigner, cài thử emulator | ✅ |
 | E03 | Split ABI + universal APK, versionCode theo tag | ⬜ |
 | E04 | Metadata F-Droid (fastlane, flavor fdroid không có thư viện non-free), reproducible build | ⬜ |
 | E05 | Hiệu năng (startup, memory nhiều tab), crash-safe, không telemetry | ⬜ |
