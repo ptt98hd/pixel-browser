@@ -2,6 +2,7 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 permissions:
   contents: write
 jobs:
@@ -23,7 +24,9 @@ jobs:
         run: ./gradlew spotlessCheck lintDebug testDebugUnitTest --console=plain
       - name: Compute version code
         run: |
-          v="${GITHUB_REF_NAME#v}"; IFS=. read -r MA MI PA <<< "${v%%-*}"
+          v="${GITHUB_REF_NAME#v}"
+          [[ "$GITHUB_REF_TYPE" == tag ]] || v="0.0.1"
+          IFS=. read -r MA MI PA <<< "${v%%-*}"
           echo "VERSION_CODE=$((MA*10000 + MI*100 + PA))" >> "$GITHUB_ENV"
       - name: Build signed release APK
         env:
@@ -39,7 +42,24 @@ jobs:
             "$BT/apksigner" verify --verbose --print-certs "$apk"
             "$BT/aapt2" dump badging "$apk" | head -3
           done
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Smoke test on emulator (install + launch)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          disable-animations: true
+          script: bash scripts/smoke-test.sh app/build/outputs/apk/release/app-universal-release.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: smoke-screenshot, path: smoke-screenshot.png, if-no-files-found: ignore }
       - name: Create GitHub Release
+        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
