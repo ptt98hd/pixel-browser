@@ -9,7 +9,7 @@ Trạng thái: ⬜ chưa làm · 🟨 đang làm · ✅ xong. Mỗi feature có 
 | A01 | WebView wrapper (interface + fake để test), settings an toàn (JS, DOM storage, safe browsing, mixed content) | ✅ |
 | A02 | Quản lý nhiều tab, giữ state khi chuyển tab/xoay màn hình/process death | ✅ |
 | A03 | Back/forward không reload (giữ WebView + history, restore scroll) | ✅ |
-| A04 | Omnibox: nhập URL/tìm kiếm, chuẩn hóa URL, gợi ý (lịch sử/bookmark/search) | 🟨 |
+| A04 | Omnibox: nhập URL/tìm kiếm, chuẩn hóa URL, gợi ý (lịch sử/bookmark/search) | ✅ |
 | A05 | Top bar: thanh URL + nút scan QR, hiển thị domain/SSL, progress | 🟨 |
 | A06 | Bottom bar 5 nút: back / forward / home / tabs / menu | 🟨 |
 | A07 | Long-press: back→lên đầu, forward→xuống cuối, home→focus URL, tabs→tab mới, menu→refresh | 🟨 |
