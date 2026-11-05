@@ -13,12 +13,12 @@ Trạng thái: ⬜ chưa làm · 🟨 đang làm · ✅ xong. Mỗi feature có 
 | A05 | Top bar: thanh URL + nút scan QR, hiển thị domain/SSL, progress (QR: C06) | ✅ |
 | A06 | Bottom bar 5 nút: back / forward / home / tabs / menu | ✅ |
 | A07 | Long-press: back→lên đầu, forward→xuống cuối, home→focus URL, tabs→tab mới, menu→refresh | ✅ |
-| A08 | Cử chỉ vuốt (vuốt cạnh = back/forward, vuốt bottom bar = đổi tab, pull-to-refresh) | ⬜ |
-| A09 | Tab switcher (lưới, thumbnail, đóng bằng vuốt, tab mới) | ⬜ |
-| A10 | Home page chỉnh được (shortcut, ảnh nền, ô tìm kiếm, sắp xếp) | ⬜ |
+| A08 | Cử chỉ vuốt (vuốt cạnh = back/forward, vuốt bottom bar = đổi tab, pull-to-refresh) | 🟨 |
+| A09 | Tab switcher (lưới, thumbnail, đóng bằng vuốt, tab mới) | 🟨 |
+| A10 | Home page chỉnh được (shortcut, ảnh nền, ô tìm kiếm, sắp xếp) | 🟨 |
 | A11 | File chooser, camera/mic/location permission prompts, fullscreen video, window.open/popup, JS dialogs, HTTP auth | 🟨 |
 | A12 | Mở link từ app khác (VIEW intent), đặt làm trình duyệt mặc định (role) | 🟨 |
-| A13 | Theme Material 3 Expressive + animation (shape morph, motion spring), dynamic color, light/dark hệ thống | ⬜ |
+| A13 | Theme Material 3 Expressive + animation (shape morph, motion spring), dynamic color, light/dark hệ thống | 🟨 |
 
 ## B. Chrome parity (M2)
 | ID | Feature | Status |
