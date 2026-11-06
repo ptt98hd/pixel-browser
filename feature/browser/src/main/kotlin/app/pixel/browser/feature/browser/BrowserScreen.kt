@@ -76,6 +76,8 @@ fun BrowserScreen(
     themeSettings: ThemeSettings = ThemeSettings(),
     fullscreenContent: @Composable () -> Unit = { FullscreenContainer(view = null) },
     engineContent: @Composable () -> Unit = {},
+    /** Spec 010: vẽ thay cho [engineContent] khi `state.isHome`. */
+    homeContent: @Composable () -> Unit = {},
 ) {
     var menuOpen by rememberSaveable { mutableStateOf(false) }
     var tabsOpen by rememberSaveable { mutableStateOf(false) }
@@ -116,7 +118,7 @@ fun BrowserScreen(
             // Fullscreen (AC20): chrome bị gỡ, engine vẫn trong cây (không pause WebView đang phát video).
             if (!state.isFullscreen) BrowserTopBar(state = state, actions = actions)
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                engineContent()
+                if (state.isHome) homeContent() else engineContent()
                 // Snackbar ngay trên bottom bar (đáy vùng nội dung).
                 SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
             }
@@ -247,6 +249,8 @@ fun BrowserRoute(
     onReturnToCaller: (() -> Unit)? = null,
     themeSettings: ThemeSettings = ThemeSettings(),
     onThemeChange: (ThemeSettings) -> Unit = {},
+    /** Spec 010: trang chủ (`:app` nối `HomeRoute`), hiển thị khi tab đang chọn ở home. */
+    homeContent: @Composable () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
     val session by viewModel.selectedSession.collectAsState()
@@ -259,6 +263,8 @@ fun BrowserRoute(
     )
     val setDefault = rememberDefaultBrowserRequest(viewModel, controller)
     TrackAppVisibility(viewModel)
+    // Ở home EngineContainer không được compose nên không tự pause session bên dưới (spec 010 AC18).
+    LaunchedEffect(session, state.isHome) { if (state.isHome) session?.onPause() }
     val actions =
         remember(viewModel, context, shareTitle, setDefault, onThemeChange) {
             BrowserActions(
@@ -297,6 +303,7 @@ fun BrowserRoute(
                 onThemeChange = onThemeChange,
                 onExitFullscreen = viewModel::onExitFullscreen,
                 onOpenAppSettings = { openAppDetailsSettings(context) },
+                onOpenUrl = viewModel::onOpenUrl,
             )
         }
     BrowserScreen(
@@ -305,9 +312,9 @@ fun BrowserRoute(
         modifier = modifier,
         themeSettings = themeSettings,
         fullscreenContent = { FullscreenContainer(view = session?.fullscreenView) },
-    ) {
-        EngineContainer(session = session)
-    }
+        engineContent = { EngineContainer(session = session) },
+        homeContent = homeContent,
+    )
     KeepScreenOnAndImmersive(enabled = state.isFullscreen)
     EngineRequestHost(
         tabId = state.selectedTabId,

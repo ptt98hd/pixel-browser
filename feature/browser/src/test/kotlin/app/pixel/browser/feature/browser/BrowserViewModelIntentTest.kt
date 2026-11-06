@@ -91,7 +91,7 @@ class BrowserViewModelIntentTest {
     }
 
     @Test
-    fun ac13_unusedHomeTab_isReused_beforeHomePageFinished() {
+    fun ac13_unusedHomeTab_isReused() {
         val f = BrowserFixture()
         val homeId = f.tabManager.selectedTabId.value
         f.viewModel.onIncomingIntent(IncomingRequest.OpenUrl("https://b.com"))
@@ -100,33 +100,28 @@ class BrowserViewModelIntentTest {
         assertEquals("https://b.com", f.selected().loadUrlCalls.last())
     }
 
+    /** Spec 010: tab home không tải gì; tái dùng nó → đúng một `loadUrl` (qua `TabManager.loadUrl`), rời home. */
     @Test
-    fun ac13_unusedHomeTab_isReused_afterHomePageFinished() {
+    fun ac13_unusedHomeTab_isReused_withSingleLoad_andLeavesHome() {
         val f = BrowserFixture()
-        val homeId = f.tabManager.selectedTabId.value
-        f.selected().fake.simulatePageFinished(f.homeUrl)
+        val homeId = f.tabManager.selectedTabId.value!!
+        f.viewModel.onIncomingIntent(IncomingRequest.OpenUrl("https://b.com"))
+        assertEquals(listOf("https://b.com"), f.selected().loadUrlCalls)
+        assertFalse(f.state().isHome)
         assertFalse(
-            f
-                .selected()
-                .state.value.canGoBack,
+            f.tabManager.tabs.value
+                .single { it.id == homeId }
+                .isHome,
         )
-        f.viewModel.onIncomingIntent(IncomingRequest.OpenUrl("https://b.com"))
-        assertEquals(1, f.tabManager.tabs.value.size)
-        assertEquals(homeId, f.tabManager.selectedTabId.value)
-        assertEquals("https://b.com", f.selected().loadUrlCalls.last())
+        assertTrue(f.state().isExternalTab)
     }
 
     @Test
-    fun ac13_homeTabWithHistory_isNotReused() {
+    fun ac13_homeTabThatLeftHome_isNotReused() {
         val f = BrowserFixture()
         val homeId = f.tabManager.selectedTabId.value
-        f.selected().fake.simulatePageFinished(f.homeUrl)
-        f.selected().visit("https://x.com")
-        assertTrue(
-            f
-                .selected()
-                .state.value.canGoBack,
-        )
+        f.viewModel.onSubmit("https://x.com")
+        f.selected().fake.simulatePageFinished("https://x.com")
         f.viewModel.onIncomingIntent(IncomingRequest.OpenUrl("https://b.com"))
         assertEquals(2, f.tabManager.tabs.value.size)
         assertNotEquals(homeId, f.tabManager.selectedTabId.value)

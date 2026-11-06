@@ -57,6 +57,7 @@ android {
 
 dependencies {
     implementation(project(":feature:browser"))
+    implementation(project(":feature:home"))
     implementation(project(":core:ui"))
     implementation(project(":core:data"))
     implementation(platform(libs.compose.bom))

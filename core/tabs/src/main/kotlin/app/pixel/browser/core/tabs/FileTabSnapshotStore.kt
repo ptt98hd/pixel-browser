@@ -51,7 +51,8 @@ class FileTabSnapshotStore(
                     .put(KEY_ID, t.id)
                     .put(KEY_URL, t.url)
                     .put(KEY_TITLE, t.title)
-                    .put(KEY_ENGINE_STATE, t.engineState?.let { Base64.getEncoder().encodeToString(it) }),
+                    .put(KEY_ENGINE_STATE, t.engineState?.let { Base64.getEncoder().encodeToString(it) })
+                    .put(KEY_BACK_TO_HOME, t.backToHome),
             )
         }
         return JSONObject()
@@ -69,6 +70,8 @@ class FileTabSnapshotStore(
                     url = o.getString(KEY_URL),
                     title = o.optString(KEY_TITLE),
                     engineState = o.optStringOrNull(KEY_ENGINE_STATE)?.let(::decodeBase64),
+                    // Khóa tùy chọn (spec 010): file cũ không có → false.
+                    backToHome = o.optBoolean(KEY_BACK_TO_HOME, false),
                 )
             }
         return TabsSnapshot(tabs, root.optStringOrNull(KEY_SELECTED))
@@ -91,5 +94,6 @@ class FileTabSnapshotStore(
         const val KEY_URL = "url"
         const val KEY_TITLE = "title"
         const val KEY_ENGINE_STATE = "engineState"
+        const val KEY_BACK_TO_HOME = "backToHome"
     }
 }

@@ -4,6 +4,7 @@ import app.pixel.browser.core.engine.EngineSession
 import app.pixel.browser.core.engine.FakeEngineSession
 import app.pixel.browser.core.tabs.EngineSessionFactory
 import app.pixel.browser.core.tabs.TabManager
+import app.pixel.browser.core.tabs.TabSnapshot
 import app.pixel.browser.core.tabs.TabSnapshotStore
 import app.pixel.browser.core.tabs.TabsSnapshot
 import app.pixel.browser.feature.browser.intent.ExternalAppLauncher
@@ -23,6 +24,13 @@ class SpySession(
         private set
     var reloadCalls = 0
         private set
+    var stopLoadingCalls = 0
+        private set
+
+    override fun stopLoading() {
+        stopLoadingCalls++
+        fake.stopLoading()
+    }
 
     override fun loadUrl(url: String) {
         loadUrlCalls += url
@@ -55,6 +63,7 @@ class SpySession(
         goBackCalls = 0
         goForwardCalls = 0
         reloadCalls = 0
+        stopLoadingCalls = 0
     }
 }
 
@@ -137,9 +146,31 @@ class BrowserFixture(
             runtimePermissions = gate,
         )
 
-    val homeUrl: String get() = viewModel.homeUrl
-
     fun selected(): SpySession = tabManager.selectedSpy()
 
     fun state(): BrowserUiState = viewModel.uiState.value
+
+    companion object {
+        /** Id của tab trang web do [onPage] tạo. */
+        const val PAGE_TAB_ID = "page"
+
+        /**
+         * Spec 010: tab home không còn là trang web. Môi trường với một tab thường (không phải home,
+         * `backToHome = false`) đang chọn, đã tải xong [url], lịch sử engine chỉ có [url]; lời gọi đã được reset.
+         */
+        fun onPage(
+            url: String,
+            launcher: RecordingLauncher = RecordingLauncher(),
+        ): BrowserFixture {
+            val store =
+                InMemoryStore().apply {
+                    stored =
+                        TabsSnapshot(listOf(TabSnapshot(PAGE_TAB_ID, url)), PAGE_TAB_ID)
+                }
+            return BrowserFixture(store, launcher).apply {
+                selected().fake.simulatePageFinished(url)
+                selected().resetCalls()
+            }
+        }
+    }
 }

@@ -33,4 +33,6 @@ data class BrowserActions(
     val onExitFullscreen: () -> Unit = {},
     /** Mở cài đặt quyền của app khi hệ thống từ chối quyền trang xin (spec 007, edge "Không hỏi lại"). */
     val onOpenAppSettings: () -> Unit = {},
+    /** Mở URL web (vd. shortcut trang chủ) trong tab đang chọn (spec 010). */
+    val onOpenUrl: (String) -> Unit = {},
 )

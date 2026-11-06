@@ -9,6 +9,9 @@ import app.pixel.browser.core.data.DataStoreThemeSettingsStore
 import app.pixel.browser.core.data.ThemeSettings
 import app.pixel.browser.core.data.ThemeSettingsStore
 import app.pixel.browser.core.data.createSettingsDataStore
+import app.pixel.browser.core.data.home.FileHomeConfigStore
+import app.pixel.browser.core.data.home.HomeConfigStore
+import app.pixel.browser.core.data.home.HomeFiles
 import app.pixel.browser.core.tabs.FileTabSnapshotStore
 import app.pixel.browser.core.tabs.TabSnapshotStore
 import app.pixel.browser.core.ui.NightModeController
@@ -29,6 +32,9 @@ import java.io.IOException
 class PixelBrowserApplication : Application() {
     /** `tabs.json` trong `noBackupFilesDir`: không bị Auto Backup/chuyển thiết bị sao lưu (spec 002). */
     val tabStore: TabSnapshotStore by lazy { FileTabSnapshotStore(File(noBackupFilesDir, "tabs.json")) }
+
+    /** `filesDir/home/config.json` (spec 010); ảnh nền cùng thư mục. Không nằm trong backup (app tắt backup). */
+    val homeStore: HomeConfigStore by lazy { FileHomeConfigStore(HomeFiles.config(filesDir)) }
 
     /**
      * Scope ghi đĩa sống theo process (không bị hủy cùng Activity/ViewModel). Tuần tự 1 luồng để hai lần

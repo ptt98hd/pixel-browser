@@ -6,6 +6,8 @@ class TabSnapshot(
     val url: String,
     val title: String = "",
     val engineState: ByteArray? = null,
+    /** Spec 010: xem [Tab.backToHome]. */
+    val backToHome: Boolean = false,
 )
 
 /** Ảnh chụp toàn bộ danh sách tab để khôi phục sau xoay màn hình/process death. */

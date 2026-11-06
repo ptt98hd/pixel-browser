@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_search_placeholder">Tìm kiếm hoặc nhập URL</string>
+    <string name="home_add_shortcut">Thêm lối tắt</string>
+    <string name="home_customize">Tùy chỉnh trang chủ</string>
+    <string name="home_menu_edit">Sửa</string>
+    <string name="home_menu_remove">Xóa</string>
+    <string name="home_move_left">Di chuyển sang trái</string>
+    <string name="home_move_right">Di chuyển sang phải</string>
+    <string name="home_shortcut_options">Tùy chọn lối tắt</string>
+    <string name="home_dialog_add_title">Thêm lối tắt</string>
+    <string name="home_dialog_edit_title">Sửa lối tắt</string>
+    <string name="home_dialog_name">Tên (không bắt buộc)</string>
+    <string name="home_dialog_url">Địa chỉ trang web</string>
+    <string name="home_dialog_save">Lưu</string>
+    <string name="home_dialog_cancel">Hủy</string>
+    <string name="home_error_invalid">Nhập địa chỉ web hợp lệ (http hoặc https).</string>
+    <string name="home_error_duplicate">Trang này đã có trên trang chủ.</string>
+    <string name="home_error_full">Trang chủ đã đầy (20 lối tắt).</string>
+    <string name="home_sheet_title">Nền</string>
+    <string name="home_bg_dynamic">Theo giao diện</string>
+    <string name="home_bg_color">Màu %1$d</string>
+    <string name="home_bg_image">Ảnh</string>
+    <string name="home_bg_dim">Làm tối ảnh</string>
+    <string name="home_bg_dim_slider">Độ tối của ảnh</string>
+    <string name="home_message_image_failed">Không dùng được ảnh này.</string>
+</resources>

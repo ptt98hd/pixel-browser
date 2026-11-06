@@ -29,6 +29,10 @@ import app.pixel.browser.feature.browser.intent.IncomingIntent
 import app.pixel.browser.feature.browser.intent.IncomingIntentResolver
 import app.pixel.browser.feature.browser.intent.from
 import app.pixel.browser.feature.browser.web.AndroidRuntimePermissionGate
+import app.pixel.browser.feature.home.AndroidBackgroundImageImporter
+import app.pixel.browser.feature.home.HomeRoute
+import app.pixel.browser.feature.home.HomeViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -65,6 +69,22 @@ class MainActivity : ComponentActivity() {
             (viewModel.runtimePermissions as? AndroidRuntimePermissionGate)?.onResult(result)
         }
 
+    /** Một `HomeViewModel` cho mọi tab: sửa trang chủ ở tab này thấy ngay ở tab khác (spec 010). */
+    private val homeViewModel: HomeViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                val appContext = app
+                HomeViewModel(
+                    appContext.homeStore,
+                    AndroidBackgroundImageImporter(appContext),
+                    Dispatchers.IO,
+                    // Scope cấp process: ghi cấu hình đang chờ không mất khi Activity bị hủy.
+                    writeScope = appContext.ioScope,
+                )
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -80,6 +100,13 @@ class MainActivity : ComponentActivity() {
                     onReturnToCaller = { moveTaskToBack(true) },
                     themeSettings = settings,
                     onThemeChange = ::onThemeChange,
+                    homeContent = {
+                        HomeRoute(
+                            homeViewModel,
+                            onOpenUrl = viewModel::onOpenUrl,
+                            onSearchClick = viewModel::onStartEditing,
+                        )
+                    },
                 )
             }
         }

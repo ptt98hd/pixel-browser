@@ -25,12 +25,11 @@ class BrowserScreenWebViewTest {
     fun ac4_switchingTabsRepeatedly_reattachesViews_withoutParentConflict() {
         val tabManager = TabManager({ WebViewEngineSession(rule.activity) }, InMemoryStore())
         val vm = BrowserViewModel(tabManager)
+        // Spec 010: tab home không hiển thị engine, nên dùng hai tab trang web để kiểm tra gắn/gỡ WebView.
+        val first = tabManager.openTab("https://a.com/").id
+        val second = tabManager.openTab("https://b.com/").id
         rule.setContent { BrowserRoute(viewModel = vm) }
         rule.waitForIdle()
-        val first = tabManager.selectedTabId.value!!
-        rule.runOnIdle { vm.onNewTab() }
-        rule.waitForIdle()
-        val second = tabManager.selectedTabId.value!!
 
         fun webView(id: String) = (tabManager.session(id) as WebViewEngineSession).webView
 

@@ -23,9 +23,12 @@ android {
 dependencies {
     api(libs.kotlinx.coroutines.core)
     api(libs.androidx.datastore.preferences)
+    implementation(project(":core:omnibox"))
 
     testImplementation(testFixtures(project(":core:data")))
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.robolectric)
+    testImplementation(project(":core:engine"))
     testFixturesImplementation(libs.kotlinx.coroutines.core)
 }

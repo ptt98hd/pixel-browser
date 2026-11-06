@@ -25,9 +25,7 @@ class BrowserViewModelExternalAppHardeningTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
-        f = BrowserFixture()
-        f.selected().visit("https://a.com/")
-        f.selected().resetCalls()
+        f = BrowserFixture.onPage("https://a.com/")
     }
 
     @After

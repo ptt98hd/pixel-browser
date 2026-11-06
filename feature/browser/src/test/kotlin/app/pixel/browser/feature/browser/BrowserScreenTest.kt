@@ -47,8 +47,12 @@ class BrowserScreenTest {
 
     private lateinit var f: BrowserFixture
 
-    private fun launch(setup: BrowserFixture.() -> Unit = {}) {
-        f = BrowserFixture()
+    /** [page] khác null → bắt đầu ở một tab trang web thay vì tab home (spec 010). */
+    private fun launch(
+        page: String? = null,
+        setup: BrowserFixture.() -> Unit = {},
+    ) {
+        f = if (page != null) BrowserFixture.onPage(page) else BrowserFixture()
         f.setup()
         rule.setContent { BrowserRoute(viewModel = f.viewModel) }
         rule.waitForIdle()
@@ -56,11 +60,15 @@ class BrowserScreenTest {
 
     private fun onUi(block: () -> Unit) = rule.runOnIdle(block)
 
+    private companion object {
+        const val START = "https://start.example/"
+    }
+
     // --- AC2 ---
 
     @Test
     fun ac2_fakeSessionWithoutView_showsPlaceholder() {
-        launch()
+        launch(page = START)
         rule.onNodeWithTag(ENGINE_PLACEHOLDER, useUnmergedTree = true).assertExists()
     }
 
@@ -116,10 +124,13 @@ class BrowserScreenTest {
 
     @Test
     fun ac7_progressFromSession_isShownLive() {
-        launch()
-        onUi { f.selected().fake.simulateProgress(70) }
+        launch(page = START)
+        onUi {
+            f.selected().reload()
+            f.selected().fake.simulateProgress(70)
+        }
         assertEquals(0.7f, rule.onNodeWithTag(PROGRESS, useUnmergedTree = true).progressFraction(), 0.001f)
-        onUi { f.selected().fake.simulatePageFinished(f.homeUrl) }
+        onUi { f.selected().fake.simulatePageFinished(START) }
         rule.onNodeWithTag(PROGRESS, useUnmergedTree = true).assertDoesNotExist()
     }
 
@@ -187,7 +198,7 @@ class BrowserScreenTest {
 
     @Test
     fun ac15_buttonsFollowFakeHistory() {
-        launch()
+        launch(page = START)
         rule.onNodeWithTag(BTN_BACK).assertIsNotEnabled()
         onUi {
             f.selected().visit("https://a.com/")
@@ -206,7 +217,7 @@ class BrowserScreenTest {
 
     @Test
     fun ac16_tapBackAndForward_navigateSelectedSession() {
-        launch {
+        launch(page = START) {
             selected().visit("https://a.com/")
             selected().visit("https://b.com/")
         }
@@ -227,11 +238,14 @@ class BrowserScreenTest {
     }
 
     @Test
-    fun ac16_tapHome_loadsHomeUrlInCurrentTab() {
-        launch { selected().visit("https://a.com/") }
+    fun ac16_tapHome_showsHomeInCurrentTab_withoutLoad() {
+        launch(page = START) { selected().visit("https://a.com/") }
         f.selected().resetCalls()
         rule.onNodeWithTag(BTN_HOME).performClick()
-        assertEquals(listOf(f.homeUrl), f.selected().loadUrlCalls)
+        rule.waitForIdle()
+        // Spec 010: home là trạng thái của tab, không loadUrl.
+        assertTrue(f.viewModel.uiState.value.isHome)
+        assertTrue(f.selected().loadUrlCalls.isEmpty())
         assertEquals(1, f.tabManager.tabs.value.size)
     }
 
@@ -265,7 +279,7 @@ class BrowserScreenTest {
 
     @Test
     fun ac18_longPressBack_scrollsToTop_withoutGoBack() {
-        launch {
+        launch(page = START) {
             selected().visit("https://a.com/")
             selected().visit("https://b.com/")
         }
@@ -318,7 +332,8 @@ class BrowserScreenTest {
         val after = f.tabManager.tabs.value
         assertEquals(before, after.dropLast(1).map { it.id })
         assertEquals(after.last().id, f.tabManager.selectedTabId.value)
-        assertEquals(listOf(f.homeUrl), f.selected().loadUrlCalls)
+        assertTrue(f.selected().loadUrlCalls.isEmpty())
+        assertTrue(f.viewModel.uiState.value.isHome)
         rule.onNodeWithTag(TAB_COUNT, useUnmergedTree = true).assertTextIs("2")
         rule.onNodeWithTag(TAB_SHEET).assertDoesNotExist()
     }
@@ -327,7 +342,7 @@ class BrowserScreenTest {
 
     @Test
     fun ac22_longPressMenu_reloads_withoutMenu() {
-        launch { selected().fake.simulatePageFinished(homeUrl) }
+        launch(page = START)
         f.selected().resetCalls()
         rule.onNodeWithTag(BTN_MENU).performTouchInput { longClick() }
         rule.waitForIdle()
@@ -344,7 +359,7 @@ class BrowserScreenTest {
 
     @Test
     fun ac24_menuReload_reloads_andClosesMenu() {
-        launch { selected().fake.simulatePageFinished(homeUrl) }
+        launch(page = START)
         f.selected().resetCalls()
         rule.onNodeWithTag(BTN_MENU).performClick()
         rule.onNodeWithTag(MENU_RELOAD).performClick()
@@ -366,7 +381,8 @@ class BrowserScreenTest {
                 .id,
             f.tabManager.selectedTabId.value,
         )
-        assertEquals(listOf(f.homeUrl), f.selected().loadUrlCalls)
+        assertTrue(f.selected().loadUrlCalls.isEmpty())
+        assertTrue(f.viewModel.uiState.value.isHome)
         rule.onNodeWithTag(MENU_NEW_TAB).assertDoesNotExist()
         rule.onNodeWithTag(TAB_COUNT, useUnmergedTree = true).assertTextIs("2")
     }

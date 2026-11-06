@@ -32,8 +32,7 @@ class ExternalAppDialogTest {
     private lateinit var f: BrowserFixture
 
     private fun launch() {
-        f = BrowserFixture()
-        f.selected().visit("https://a.com/")
+        f = BrowserFixture.onPage("https://a.com/")
         rule.setContent { BrowserRoute(viewModel = f.viewModel) }
         rule.waitForIdle()
     }
