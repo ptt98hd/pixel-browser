@@ -29,4 +29,8 @@ data class BrowserActions(
     val onReturnToCaller: () -> Unit = {},
     /** Người dùng đổi theme trong `ThemeDialog` (spec 011). */
     val onThemeChange: (ThemeSettings) -> Unit = {},
+    /** Thoát video toàn màn hình (spec 007 AC20). */
+    val onExitFullscreen: () -> Unit = {},
+    /** Mở cài đặt quyền của app khi hệ thống từ chối quyền trang xin (spec 007, edge "Không hỏi lại"). */
+    val onOpenAppSettings: () -> Unit = {},
 )

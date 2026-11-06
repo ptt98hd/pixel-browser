@@ -36,6 +36,60 @@ abstract class EngineSessionContractTest {
         isRedirect: Boolean = false,
     ): Boolean
 
+    // --- Spec 007: hook mô phỏng callback của engine ---
+
+    /**
+     * JS dialog [kind] từ trang hiện tại (frame url = `state.url`). Trả request mới trong `requests`, hoặc null
+     * nếu engine tự trả lời (dialog bị chặn) – khi đó [lastDelivered] là response tự động.
+     */
+    protected abstract fun EngineSession.emitJsDialog(
+        kind: JsDialogKind,
+        message: String,
+        defaultValue: String? = null,
+    ): EngineRequest.JsDialog?
+
+    /** Response gần nhất mà trang/engine thực sự nhận (qua `respond` hoặc tự động); null nếu chưa có. */
+    protected abstract fun EngineSession.lastDelivered(): EngineResponse?
+
+    /** Trang (origin = origin của `state.url`) xin quyền media [permissions] (chỉ Camera/Microphone). */
+    protected abstract fun EngineSession.emitMediaPermission(permissions: Set<SitePermission>)
+
+    /** Engine tự hủy request quyền gần nhất (`onPermissionRequestCanceled`). */
+    protected abstract fun EngineSession.emitLastPermissionCanceled()
+
+    /** `onShowFileChooser`. */
+    protected abstract fun EngineSession.emitFileChooser(
+        acceptTypes: List<String>,
+        allowMultiple: Boolean = false,
+        capture: Boolean = false,
+    )
+
+    protected abstract fun EngineSession.emitHttpAuth(
+        host: String,
+        realm: String,
+    )
+
+    /** `onCreateWindow`; true = engine giữ popup. */
+    protected abstract fun EngineSession.emitCreateWindow(isUserGesture: Boolean): Boolean
+
+    protected abstract fun EngineSession.emitCloseWindow()
+
+    protected abstract fun EngineSession.emitDownload(
+        url: String,
+        mimeType: String?,
+        contentDisposition: String?,
+        contentLength: Long,
+    )
+
+    /** `onShowCustomView` với một view mới. */
+    protected abstract fun EngineSession.emitEnterFullscreen()
+
+    /** Engine báo đã thoát fullscreen (`onHideCustomView`). */
+    protected abstract fun EngineSession.emitHideFullscreen()
+
+    /** Session hợp lệ để làm đích `AttachWindow` cho loại engine đang test. */
+    protected abstract fun attachTarget(): EngineSession
+
     private val url = "https://example.com/"
 
     @Test
@@ -361,5 +415,318 @@ abstract class EngineSessionContractTest {
         s.close()
         s.emitNavigation("tel:123")
         assertTrue(s.requests.value.isEmpty())
+    }
+
+    // --- Spec 007: nền tảng web ---
+
+    private val origin = "https://example.com"
+
+    @Test
+    fun ac2_alert_createsJsDialogRequest_withPageOrigin_andNoDefaultValue() {
+        val s = loadedSession()
+        val r = s.emitJsDialog(JsDialogKind.Alert, "hi")
+        val expected = EngineRequest.JsDialog(1, origin, JsDialogKind.Alert, "hi", null, canSuppress = false)
+        assertEquals(expected, r)
+        assertEquals(listOf(expected), s.requests.value)
+    }
+
+    @Test
+    fun ac2_prompt_keepsDefaultValue_otherKindsHaveNullDefault() {
+        val s = loadedSession()
+        assertEquals("d", s.emitJsDialog(JsDialogKind.Prompt, "p", "d")?.defaultValue)
+        val confirm = s.emitJsDialog(JsDialogKind.Confirm, "c", "ignored")
+        assertEquals(JsDialogKind.Confirm, confirm?.kind)
+        assertNull(confirm?.defaultValue)
+        val beforeUnload = s.emitJsDialog(JsDialogKind.BeforeUnload, "b")
+        assertEquals(JsDialogKind.BeforeUnload, beforeUnload?.kind)
+        assertNull(beforeUnload?.defaultValue)
+    }
+
+    @Test
+    fun ac2_longMessage_isNotTruncated() {
+        val s = loadedSession()
+        val message = "x".repeat(20_000)
+        assertEquals(message, s.emitJsDialog(JsDialogKind.Alert, message)?.message)
+    }
+
+    @Test
+    fun ac2_confirmResponse_isDelivered_andRemovesRequest() {
+        val s = loadedSession()
+        val r = s.emitJsDialog(JsDialogKind.Confirm, "ok?")!!
+        assertTrue(s.respond(r.id, EngineResponse.Confirm()))
+        assertEquals(EngineResponse.Confirm(), s.lastDelivered())
+        assertTrue(s.requests.value.isEmpty())
+    }
+
+    @Test
+    fun ac2_promptText_isDelivered() {
+        val s = loadedSession()
+        val r = s.emitJsDialog(JsDialogKind.Prompt, "name?", "")!!
+        assertTrue(s.respond(r.id, EngineResponse.PromptText("abc")))
+        assertEquals(EngineResponse.PromptText("abc"), s.lastDelivered())
+    }
+
+    @Test
+    fun ac2_dismiss_isDelivered() {
+        val s = loadedSession()
+        val r = s.emitJsDialog(JsDialogKind.Alert, "hi")!!
+        assertTrue(s.respond(r.id, EngineResponse.Dismiss()))
+        assertEquals(EngineResponse.Dismiss(), s.lastDelivered())
+    }
+
+    @Test
+    fun ac3_firstDialogCannotBeSuppressed_laterDialogsCan() {
+        val s = loadedSession()
+        val first = s.emitJsDialog(JsDialogKind.Alert, "1")!!
+        assertFalse(first.canSuppress)
+        s.respond(first.id, EngineResponse.Confirm())
+        assertTrue(s.emitJsDialog(JsDialogKind.Alert, "2")!!.canSuppress)
+        assertTrue(s.emitJsDialog(JsDialogKind.Confirm, "3")!!.canSuppress)
+    }
+
+    /** Hai dialog, dialog thứ hai được trả lời với suppressFurther = true. */
+    private fun suppressedSession(response: EngineResponse = EngineResponse.Confirm(suppressFurther = true)) =
+        loadedSession().apply {
+            respond(emitJsDialog(JsDialogKind.Alert, "1")!!.id, EngineResponse.Confirm())
+            val second = emitJsDialog(JsDialogKind.Alert, "2")!!
+            assertTrue(respond(second.id, response))
+        }
+
+    @Test
+    fun ac3_afterSuppress_alertConfirmPrompt_areAutoDismissed_withoutRequest() {
+        val s = suppressedSession()
+        for (kind in listOf(JsDialogKind.Alert, JsDialogKind.Confirm, JsDialogKind.Prompt)) {
+            assertNull(kind.name, s.emitJsDialog(kind, "spam", if (kind == JsDialogKind.Prompt) "d" else null))
+            assertEquals(kind.name, EngineResponse.Dismiss(), s.lastDelivered())
+            assertTrue(kind.name, s.requests.value.isEmpty())
+        }
+    }
+
+    @Test
+    fun ac3_suppressViaDismissOrPromptText_alsoSuppresses() {
+        val viaDismiss = suppressedSession(EngineResponse.Dismiss(suppressFurther = true))
+        assertNull(viaDismiss.emitJsDialog(JsDialogKind.Alert, "spam"))
+        val s = loadedSession()
+        s.respond(s.emitJsDialog(JsDialogKind.Prompt, "1", "")!!.id, EngineResponse.PromptText("a"))
+        val second = s.emitJsDialog(JsDialogKind.Prompt, "2", "")!!
+        assertTrue(s.respond(second.id, EngineResponse.PromptText("b", suppressFurther = true)))
+        assertNull(s.emitJsDialog(JsDialogKind.Prompt, "3", ""))
+    }
+
+    @Test
+    fun ac3_afterSuppress_beforeUnload_isAutoConfirmed() {
+        val s = suppressedSession()
+        assertNull(s.emitJsDialog(JsDialogKind.BeforeUnload, "leave?"))
+        assertEquals(EngineResponse.Confirm(), s.lastDelivered())
+        assertTrue(s.requests.value.isEmpty())
+    }
+
+    @Test
+    fun ac3_suppressWithoutFlag_doesNotSuppress() {
+        val s = suppressedSession(EngineResponse.Confirm())
+        assertNotNull(s.emitJsDialog(JsDialogKind.Alert, "3"))
+    }
+
+    /** Điều hướng main frame mới như engine thật: lệnh + `onPageStarted`. */
+    @Test
+    fun ac3_newMainFrameNavigation_resetsCounterAndSuppression() {
+        val s = suppressedSession()
+        s.loadUrl("https://example.org/")
+        s.emitPageStarted("https://example.org/")
+        val r = s.emitJsDialog(JsDialogKind.Alert, "new page")
+        assertNotNull(r)
+        assertFalse(r!!.canSuppress)
+    }
+
+    @Test
+    fun ac3_reload_resetsCounterAndSuppression() {
+        val s = suppressedSession()
+        s.reload()
+        s.emitPageStarted(url)
+        val r = s.emitJsDialog(JsDialogKind.Alert, "again")
+        assertNotNull(r)
+        assertFalse(r!!.canSuppress)
+    }
+
+    @Test
+    fun ac4_mediaRequest_createsPermissionPrompt_withPageOrigin() {
+        val s = loadedSession()
+        s.emitMediaPermission(setOf(SitePermission.Camera, SitePermission.Microphone))
+        assertEquals(
+            listOf(EngineRequest.PermissionPrompt(1, origin, setOf(SitePermission.Camera, SitePermission.Microphone))),
+            s.requests.value,
+        )
+    }
+
+    @Test
+    fun ac4_grantSubset_andEmptyGrant_areAccepted_extraPermissionRejected() {
+        val s = loadedSession()
+        s.emitMediaPermission(setOf(SitePermission.Camera))
+        val id =
+            s.requests.value
+                .single()
+                .id
+        assertFalse(s.respond(id, EngineResponse.Grant(setOf(SitePermission.Camera, SitePermission.Location))))
+        assertEquals(1, s.requests.value.size)
+        assertTrue(s.respond(id, EngineResponse.Grant(setOf(SitePermission.Camera))))
+        assertTrue(s.requests.value.isEmpty())
+        s.emitMediaPermission(setOf(SitePermission.Microphone))
+        assertTrue(
+            s.respond(
+                s.requests.value
+                    .single()
+                    .id,
+                EngineResponse.Grant(emptySet()),
+            ),
+        )
+    }
+
+    @Test
+    fun ac4_canceledByEngine_removesRequest() {
+        val s = loadedSession()
+        s.emitMediaPermission(setOf(SitePermission.Camera))
+        val id =
+            s.requests.value
+                .single()
+                .id
+        s.emitLastPermissionCanceled()
+        assertTrue(s.requests.value.isEmpty())
+        assertFalse(s.respond(id, EngineResponse.Dismiss()))
+    }
+
+    @Test
+    fun ac6_fileChooser_normalizesAcceptTypes_andCarriesFlags() {
+        val s = loadedSession()
+        s.emitFileChooser(listOf("", " Image/* ", ".PDF"), allowMultiple = true, capture = true)
+        assertEquals(
+            listOf(
+                EngineRequest.FileChooser(1, origin, listOf("image/*", ".pdf"), allowMultiple = true, capture = true),
+            ),
+            s.requests.value,
+        )
+    }
+
+    @Test
+    fun ac6_singleChooser_rejectsMultipleFiles_acceptsOneOrNone() {
+        val s = loadedSession()
+        s.emitFileChooser(listOf("image/*"))
+        val r = s.requests.value.single() as EngineRequest.FileChooser
+        assertFalse(r.allowMultiple)
+        assertFalse(r.capture)
+        assertFalse(s.respond(r.id, EngineResponse.Files(listOf("content://a/1", "content://a/2"))))
+        assertTrue(s.respond(r.id, EngineResponse.Files(listOf("content://a/1"))))
+    }
+
+    @Test
+    fun ac6_secondChooserWhilePending_createsNoRequest() {
+        val s = loadedSession()
+        s.emitFileChooser(listOf("image/*"))
+        s.emitFileChooser(listOf("video/*"))
+        assertEquals(1, s.requests.value.size)
+        s.respond(
+            s.requests.value
+                .single()
+                .id,
+            EngineResponse.Dismiss(),
+        )
+        s.emitFileChooser(listOf("video/*"))
+        assertEquals(1, s.requests.value.size)
+    }
+
+    @Test
+    fun ac7_httpAuth_createsRequest_withHostRealmAndPageOrigin() {
+        val s = loadedSession()
+        s.emitHttpAuth("a.com", "Admin")
+        assertEquals(listOf(EngineRequest.HttpAuth(1, origin, "a.com", "Admin")), s.requests.value)
+    }
+
+    @Test
+    fun ac7_credentials_areDelivered() {
+        val s = loadedSession()
+        s.emitHttpAuth("a.com", "Admin")
+        assertTrue(s.respond(1, EngineResponse.Credentials("u", "p")))
+        assertEquals(EngineResponse.Credentials("u", "p"), s.lastDelivered())
+        assertTrue(s.requests.value.isEmpty())
+    }
+
+    @Test
+    fun ac7_dismiss_isDelivered() {
+        val s = loadedSession()
+        s.emitHttpAuth("a.com", "Admin")
+        assertTrue(s.respond(1, EngineResponse.Dismiss()))
+        assertEquals(EngineResponse.Dismiss(), s.lastDelivered())
+    }
+
+    @Test
+    fun ac8_enterFullscreen_setsState_andExitClearsIt() {
+        val s = loadedSession()
+        assertFalse(s.state.value.isFullscreen)
+        assertNull(s.fullscreenView)
+        s.emitEnterFullscreen()
+        assertTrue(s.state.value.isFullscreen)
+        s.exitFullscreen()
+        s.emitHideFullscreen()
+        assertFalse(s.state.value.isFullscreen)
+        assertNull(s.fullscreenView)
+    }
+
+    @Test
+    fun ac9_popupWithGesture_isKept_andCreatesNewWindowRequest() {
+        val s = loadedSession()
+        assertTrue(s.emitCreateWindow(isUserGesture = true))
+        assertEquals(listOf(EngineRequest.NewWindow(1, origin)), s.requests.value)
+    }
+
+    @Test
+    fun ac9_attachWindow_withValidTarget_isAccepted() {
+        val s = loadedSession()
+        s.emitCreateWindow(isUserGesture = true)
+        assertTrue(s.respond(1, EngineResponse.AttachWindow(attachTarget())))
+        assertTrue(s.requests.value.isEmpty())
+    }
+
+    @Test
+    fun ac9_newWindow_canBeDismissed() {
+        val s = loadedSession()
+        s.emitCreateWindow(isUserGesture = true)
+        assertTrue(s.respond(1, EngineResponse.Dismiss()))
+    }
+
+    @Test
+    fun ac9_popupWithoutGesture_isBlocked_andReportsPopupBlocked() {
+        val s = loadedSession()
+        assertFalse(s.emitCreateWindow(isUserGesture = false))
+        assertEquals(listOf(EngineRequest.PopupBlocked(1, origin)), s.requests.value)
+        assertTrue(s.respond(1, EngineResponse.Dismiss()))
+    }
+
+    @Test
+    fun ac10_closeWindow_createsCloseWindowRequest() {
+        val s = loadedSession()
+        s.emitCloseWindow()
+        assertEquals(listOf(EngineRequest.CloseWindow(1, origin)), s.requests.value)
+        assertTrue(s.respond(1, EngineResponse.Dismiss()))
+    }
+
+    @Test
+    fun ac10_download_createsDownloadRequest_withoutNavigating() {
+        val s = loadedSession()
+        val before = s.state.value
+        s.emitDownload("https://a.com/f.pdf", "application/pdf", "attachment; filename=f.pdf", 2048)
+        assertEquals(
+            listOf(
+                EngineRequest.Download(
+                    id = 1,
+                    origin = origin,
+                    url = "https://a.com/f.pdf",
+                    mimeType = "application/pdf",
+                    contentDisposition = "attachment; filename=f.pdf",
+                    contentLength = 2048,
+                ),
+            ),
+            s.requests.value,
+        )
+        assertEquals(before, s.state.value)
+        assertTrue(s.respond(1, EngineResponse.Dismiss()))
     }
 }

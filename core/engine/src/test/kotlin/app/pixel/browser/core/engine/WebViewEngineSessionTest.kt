@@ -3,7 +3,10 @@ package app.pixel.browser.core.engine
 import android.app.Activity
 import android.content.Context
 import android.content.MutableContextWrapper
+import android.net.Uri
 import android.view.View
+import android.webkit.PermissionRequest
+import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.widget.FrameLayout
 import org.junit.Assert.assertEquals
@@ -46,6 +49,84 @@ class WebViewEngineSessionTest : EngineSessionContractTest() {
         hasGesture: Boolean,
         isRedirect: Boolean,
     ): Boolean = (this as WebViewEngineSession).dispatchNavigation(url, isMainFrame, hasGesture, isRedirect)
+
+    // --- Spec 007 hooks ---
+
+    /** Mọi response mà callback của WebView nhận (JS dialog, HTTP auth), theo thứ tự. */
+    private val delivered = mutableListOf<EngineResponse>()
+    private val permissionRequests = mutableListOf<RecordingPermissionRequest>()
+
+    private val EngineSession.web get() = this as WebViewEngineSession
+
+    override fun EngineSession.emitJsDialog(
+        kind: JsDialogKind,
+        message: String,
+        defaultValue: String?,
+    ): EngineRequest.JsDialog? {
+        val before = requests.value.map { it.id }.toSet()
+        web.dispatchJsDialog(kind, state.value.url, message, defaultValue) { delivered += it }
+        return requests.value.filterIsInstance<EngineRequest.JsDialog>().singleOrNull { it.id !in before }
+    }
+
+    override fun EngineSession.lastDelivered(): EngineResponse? = delivered.lastOrNull()
+
+    override fun EngineSession.emitMediaPermission(permissions: Set<SitePermission>) {
+        val resources =
+            permissions.map {
+                when (it) {
+                    SitePermission.Camera -> PermissionRequest.RESOURCE_VIDEO_CAPTURE
+                    SitePermission.Microphone -> PermissionRequest.RESOURCE_AUDIO_CAPTURE
+                    SitePermission.Location -> error("Location đi qua onGeolocationPermissionsShowPrompt")
+                }
+            }
+        val request = RecordingPermissionRequest(Uri.parse(state.value.url), resources.toTypedArray())
+        permissionRequests += request
+        web.chromeClient.onPermissionRequest(request)
+    }
+
+    override fun EngineSession.emitLastPermissionCanceled() =
+        web.chromeClient.onPermissionRequestCanceled(permissionRequests.last())
+
+    override fun EngineSession.emitFileChooser(
+        acceptTypes: List<String>,
+        allowMultiple: Boolean,
+        capture: Boolean,
+    ) {
+        val mode =
+            if (allowMultiple) {
+                WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE
+            } else {
+                WebChromeClient.FileChooserParams.MODE_OPEN
+            }
+        web.chromeClient.onShowFileChooser(
+            web.webView,
+            RecordingFileCallback(),
+            TestFileChooserParams(mode, acceptTypes.toTypedArray(), capture),
+        )
+    }
+
+    override fun EngineSession.emitHttpAuth(
+        host: String,
+        realm: String,
+    ) = web.dispatchHttpAuth(host, realm) { delivered += it }
+
+    override fun EngineSession.emitCreateWindow(isUserGesture: Boolean): Boolean =
+        web.dispatchCreateWindow(isUserGesture) {}
+
+    override fun EngineSession.emitCloseWindow() = web.chromeClient.onCloseWindow(web.webView)
+
+    override fun EngineSession.emitDownload(
+        url: String,
+        mimeType: String?,
+        contentDisposition: String?,
+        contentLength: Long,
+    ) = web.emitDownloadStart(url, contentDisposition, mimeType, contentLength)
+
+    override fun EngineSession.emitEnterFullscreen() = web.showCustomView(View(context), RecordingCustomViewCallback())
+
+    override fun EngineSession.emitHideFullscreen() = web.chromeClient.onHideCustomView()
+
+    override fun attachTarget(): EngineSession = WebViewEngineSession(context)
 
     @Test
     fun defaultSettings_areSecure() {

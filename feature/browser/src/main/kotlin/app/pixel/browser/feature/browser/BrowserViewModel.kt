@@ -1,11 +1,16 @@
 package app.pixel.browser.feature.browser
 
+import android.Manifest
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.pixel.browser.core.engine.EngineRequest
 import app.pixel.browser.core.engine.EngineResponse
 import app.pixel.browser.core.engine.EngineSession
+import app.pixel.browser.core.engine.SitePermission
+import app.pixel.browser.core.engine.isSecureOrigin
 import app.pixel.browser.core.engine.isValidWebUrl
+import app.pixel.browser.core.engine.originOf
+import app.pixel.browser.core.engine.schemeOf
 import app.pixel.browser.core.omnibox.DefaultSuggestionProvider
 import app.pixel.browser.core.omnibox.OmniboxClassifier
 import app.pixel.browser.core.omnibox.OmniboxResult
@@ -21,6 +26,8 @@ import app.pixel.browser.core.tabs.TabsSnapshot
 import app.pixel.browser.feature.browser.intent.ExternalAppLauncher
 import app.pixel.browser.feature.browser.intent.ExternalLaunchResult
 import app.pixel.browser.feature.browser.intent.IncomingRequest
+import app.pixel.browser.feature.browser.web.RuntimePermissionGate
+import app.pixel.browser.feature.browser.web.SitePermissionMemory
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,6 +52,21 @@ object BrowserMessages {
 
     /** Không mở được màn hình cài đặt trình duyệt mặc định (spec 006). */
     const val SETTINGS_UNAVAILABLE = "settings_unavailable"
+
+    /** Popup không có gesture đã bị chặn (spec 007 AC21). */
+    const val POPUP_BLOCKED = "popup_blocked"
+
+    /** Hệ thống từ chối (một phần) quyền mà trang xin; UI gợi ý mở cài đặt app (spec 007 AC15). */
+    const val PERMISSION_DENIED = "permission_denied"
+
+    /** Link tải không phải http/https (blob:, data:) – chưa hỗ trợ (spec 007 AC24). */
+    const val DOWNLOAD_UNSUPPORTED = "download_unsupported"
+
+    /** DownloadManager từ chối link tải (spec 007 AC24). */
+    const val DOWNLOAD_FAILED = "download_failed"
+
+    /** Không có app chọn file/chụp ảnh (spec 007 AC19). */
+    const val FILE_CHOOSER_UNAVAILABLE = "file_chooser_unavailable"
 }
 
 /**
@@ -61,6 +83,10 @@ class BrowserViewModel(
     private val externalAppLauncher: ExternalAppLauncher = ExternalAppLauncher { ExternalLaunchResult.Rejected },
     /** Đồng hồ đơn điệu (ms) cho throttle mở app ngoài. */
     private val clock: () -> Long = { System.nanoTime() / NANOS_PER_MILLI },
+    /** Lựa chọn quyền theo site trong process, dùng chung giữa các tab (spec 007 AC16). */
+    private val permissionMemory: SitePermissionMemory = SitePermissionMemory(),
+    /** Xin quyền Android lúc chạy (spec 007 AC15); UI dùng chung cho chụp ảnh (AC19). */
+    val runtimePermissions: RuntimePermissionGate = RuntimePermissionGate { emptySet() },
 ) : ViewModel() {
     /** Trang home tạm thời = trang chủ search engine (spec 004 AC18) cho tới A10. */
     val homeUrl: String get() = searchEngine.homeUrl
@@ -99,6 +125,24 @@ class BrowserViewModel(
     }
 
     private val externalApps = HashMap<EngineSession, ExternalAppState>()
+
+    /**
+     * Kế hoạch cho một `PermissionPrompt` (spec 007 AC16): [ask] là quyền chưa nhớ (hiện trong dialog),
+     * [remembered] là quyền đã nhớ Allow. [inFlight] = đang chờ hệ thống cấp quyền, không hiện dialog.
+     */
+    private class PermissionPlan(
+        val ask: Set<SitePermission>,
+        val remembered: Set<SitePermission>,
+        /** Origin xin = origin trang chính; iframe khác origin không dùng/ghi bộ nhớ quyền. */
+        val rememberable: Boolean,
+        var inFlight: Boolean = false,
+    )
+
+    private val permissionPlans = HashMap<EngineSession, HashMap<Long, PermissionPlan>>()
+
+    /** Tab popup (spec 007 AC21) → tab đã mở nó; dùng khi popup gọi `window.close()` (AC22). */
+    private val popupOpeners = HashMap<String, String>()
+    private var openingPopup = false
     private var isAppVisible = true
     private var showSetDefaultBrowser = false
     private var recomputing = false
@@ -138,6 +182,7 @@ class BrowserViewModel(
 
     fun onNewTab() {
         stopEditing()
+        exitFullscreen(current())
         tabManager.openTab(homeUrl)
         recompute()
     }
@@ -202,11 +247,13 @@ class BrowserViewModel(
 
     fun onSelectTab(id: String) {
         stopEditing()
+        if (id != tabManager.selectedTabId.value) exitFullscreen(current())
         tabManager.selectTab(id)
         recompute()
     }
 
     fun onCloseTab(id: String) {
+        exitFullscreen(tabManager.session(id))
         tabManager.closeTab(id)
         recompute()
     }
@@ -229,6 +276,7 @@ class BrowserViewModel(
                 is IncomingRequest.Rejected -> null
             }
         stopEditing()
+        exitFullscreen(current())
         if (url == null || !isValidWebUrl(url)) {
             message = BrowserMessages.INTENT_REJECTED
         } else {
@@ -292,6 +340,78 @@ class BrowserViewModel(
         recompute()
     }
 
+    /** Trả lời request [requestId] của tab đang chọn (spec 007). */
+    fun onRespond(
+        requestId: Long,
+        response: EngineResponse,
+    ) {
+        val tabId = tabManager.selectedTabId.value ?: return
+        onRespond(tabId, requestId, response)
+    }
+
+    /**
+     * Trả lời request [requestId] của tab [tabId] (tab lúc dialog/picker được hiện). Không làm gì nếu tab đó không
+     * còn request này đang chờ – kết quả đến muộn không bao giờ rơi sang tab khác.
+     */
+    fun onRespond(
+        tabId: String,
+        requestId: Long,
+        response: EngineResponse,
+    ) {
+        val session = tabManager.session(tabId) ?: return
+        if (session.requests.value.none { it.id == requestId }) return
+        session.respond(requestId, response)
+        recompute()
+    }
+
+    /**
+     * Người dùng Allow/Block hộp thoại quyền của tab đang chọn (spec 007 AC15–AC16). Lựa chọn được nhớ cho các
+     * quyền trong dialog; kết quả gộp với quyền đã nhớ Allow rồi xin hệ thống những quyền Android còn thiếu.
+     */
+    fun onPermissionDecision(
+        requestId: Long,
+        allow: Boolean,
+    ) {
+        val tabId = tabManager.selectedTabId.value ?: return
+        onPermissionDecision(tabId, requestId, allow)
+    }
+
+    /** Như [onPermissionDecision] cho request của tab [tabId] (tab lúc dialog được hiện). */
+    fun onPermissionDecision(
+        tabId: String,
+        requestId: Long,
+        allow: Boolean,
+    ) {
+        val session = tabManager.session(tabId) ?: return
+        val request =
+            session.requests.value
+                .filterIsInstance<EngineRequest.PermissionPrompt>()
+                .firstOrNull { it.id == requestId } ?: return
+        val plan = permissionPlan(session, request)
+        if (plan.inFlight) return
+        if (plan.rememberable) plan.ask.forEach { permissionMemory.set(request.origin, it, allow) }
+        grantPermissions(session, request, plan, if (allow) plan.remembered + plan.ask else plan.remembered)
+        recompute()
+    }
+
+    /** Thoát video toàn màn hình của tab đang chọn (spec 007 AC20). */
+    fun onExitFullscreen() {
+        exitFullscreen(current())
+        recompute()
+    }
+
+    /** DownloadManager không nhận link tải (spec 007 AC24). */
+    fun onDownloadFailed() {
+        message = BrowserMessages.DOWNLOAD_FAILED
+        recompute()
+    }
+
+    /** Không mở được trình chọn file/camera (spec 007 AC19). */
+    fun onFileChooserUnavailable() {
+        message = BrowserMessages.FILE_CHOOSER_UNAVAILABLE
+        recompute()
+    }
+
     /** App hiển thị (≥ STARTED) hay không; khi ẩn, request có gesture đi qua hộp thoại thay vì mở thẳng. */
     fun onAppVisibilityChanged(visible: Boolean) {
         isAppVisible = visible
@@ -317,6 +437,168 @@ class BrowserViewModel(
     }
 
     private fun current(): EngineSession? = tabManager.selectedTabId.value?.let(tabManager::session)
+
+    private fun exitFullscreen(session: EngineSession?) {
+        if (session?.state?.value?.isFullscreen == true) session.exitFullscreen()
+    }
+
+    private fun tabIdOf(session: EngineSession): String? =
+        tabManager.tabs.value
+            .firstOrNull { tabManager.session(it.id) === session }
+            ?.id
+
+    /**
+     * Xử lý các request của spec 007 mà ViewModel tự quyết (AC13): popup (AC21), `window.close()` (AC22), quyền
+     * từ origin không an toàn (AC17) hoặc đã nhớ (AC16), link tải không phải http/https (AC24).
+     */
+    private fun processWebRequests() {
+        for (session in observedSessions.orEmpty()) {
+            // Bỏ kế hoạch quyền của request đã được trả lời/hủy.
+            permissionPlans[session]?.keys?.retainAll(
+                session.requests.value
+                    .map { it.id }
+                    .toSet(),
+            )
+            for (request in session.requests.value) {
+                when (request) {
+                    is EngineRequest.NewWindow -> {
+                        openPopup(session, request)
+                    }
+
+                    is EngineRequest.PopupBlocked -> {
+                        session.respond(request.id, EngineResponse.Dismiss())
+                        message = BrowserMessages.POPUP_BLOCKED
+                    }
+
+                    is EngineRequest.CloseWindow -> {
+                        closeWindow(session, request)
+                    }
+
+                    is EngineRequest.PermissionPrompt -> {
+                        autoDecidePermission(session, request)
+                    }
+
+                    is EngineRequest.Download -> {
+                        if (schemeOf(request.url) !in DOWNLOAD_SCHEMES) {
+                            session.respond(request.id, EngineResponse.Dismiss())
+                            message = BrowserMessages.DOWNLOAD_UNSUPPORTED
+                        }
+                    }
+
+                    else -> {
+                        Unit
+                    }
+                }
+            }
+        }
+    }
+
+    private fun openPopup(
+        opener: EngineSession,
+        request: EngineRequest.NewWindow,
+    ) {
+        val openerId = tabIdOf(opener)
+        if (openerId == null) {
+            opener.respond(request.id, EngineResponse.Dismiss())
+            return
+        }
+        exitFullscreen(opener)
+        // Engine của popup tự điều hướng: không tải homeUrl vào tab mới (ensureSelectedLoaded chạy đồng bộ).
+        openingPopup = true
+        val popup =
+            try {
+                tabManager.openTabForWindow(openerId)
+            } finally {
+                openingPopup = false
+            }
+        val target = popup?.let { tabManager.session(it.id) }
+        if (popup == null || target == null || !opener.respond(request.id, EngineResponse.AttachWindow(target))) {
+            // Engine không nhận session mới làm đích: bỏ tab popup, quay về opener.
+            popup?.let { tabManager.closeTab(it.id) }
+            tabManager.selectTab(openerId)
+            opener.respond(request.id, EngineResponse.Dismiss())
+            return
+        }
+        stopEditing()
+        popupOpeners[popup.id] = openerId
+    }
+
+    private fun closeWindow(
+        session: EngineSession,
+        request: EngineRequest.CloseWindow,
+    ) {
+        session.respond(request.id, EngineResponse.Dismiss())
+        val tabId = tabIdOf(session) ?: return
+        // Chỉ tab mở bằng NewWindow mới được trang tự đóng (như Chrome); tab thường bỏ qua.
+        val openerId = popupOpeners.remove(tabId) ?: return
+        val wasSelected = tabId == tabManager.selectedTabId.value
+        exitFullscreen(session)
+        tabManager.closeTab(tabId)
+        if (wasSelected && tabManager.session(openerId) != null) tabManager.selectTab(openerId)
+    }
+
+    private fun permissionPlan(
+        session: EngineSession,
+        request: EngineRequest.PermissionPrompt,
+    ): PermissionPlan =
+        permissionPlans.getOrPut(session, ::HashMap).getOrPut(request.id) {
+            // Bộ nhớ chỉ áp dụng khi origin xin quyền chính là trang chính (key thực tế = (trang, origin xin)).
+            val rememberable = request.origin == originOf(session.state.value.url)
+            val remembered =
+                request.permissions.associateWith {
+                    if (rememberable) permissionMemory.get(request.origin, it) else null
+                }
+            PermissionPlan(
+                ask = remembered.filterValues { it == null }.keys,
+                remembered = remembered.filterValues { it == true }.keys,
+                rememberable = rememberable,
+            )
+        }
+
+    private fun autoDecidePermission(
+        session: EngineSession,
+        request: EngineRequest.PermissionPrompt,
+    ) {
+        // AC17: chỉ origin an toàn mới được xin quyền; không dialog, không hỏi hệ thống.
+        if (!isSecureOrigin(request.origin)) {
+            session.respond(request.id, EngineResponse.Dismiss())
+            return
+        }
+        val plan = permissionPlan(session, request)
+        if (plan.ask.isEmpty() && !plan.inFlight) grantPermissions(session, request, plan, plan.remembered)
+    }
+
+    /**
+     * Cấp [wanted] cho [request]: rỗng → `Dismiss()`; nếu không, xin hệ thống các quyền Android còn thiếu rồi
+     * `Grant(<quyền hệ thống đã cấp>)`; thiếu quyền nào → [BrowserMessages.PERMISSION_DENIED].
+     */
+    private fun grantPermissions(
+        session: EngineSession,
+        request: EngineRequest.PermissionPrompt,
+        plan: PermissionPlan,
+        wanted: Set<SitePermission>,
+    ) {
+        if (wanted.isEmpty()) {
+            session.respond(request.id, EngineResponse.Dismiss())
+            return
+        }
+        plan.inFlight = true
+        viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            val missing = wanted.filterNot(::isOsGranted).flatMap { androidPermissions(it) }.toSet()
+            val newlyGranted = if (missing.isEmpty()) emptySet() else runtimePermissions.request(missing)
+            val granted =
+                wanted.filterTo(mutableSetOf()) { p ->
+                    isOsGranted(p) || androidPermissions(p).any { it in newlyGranted }
+                }
+            if (granted != wanted) message = BrowserMessages.PERMISSION_DENIED
+            session.respond(request.id, EngineResponse.Grant(granted))
+            recompute()
+        }
+    }
+
+    /** Quyền Android đã cấp sẵn; Location chỉ cần một trong hai (fine/coarse). */
+    private fun isOsGranted(permission: SitePermission): Boolean =
+        androidPermissions(permission).any(runtimePermissions::isGranted)
 
     /** Tab home ban đầu, đang chọn, chưa có lịch sử và chưa rời [homeUrl] (AC13). */
     private fun unusedHomeTab(): String? {
@@ -427,7 +709,9 @@ class BrowserViewModel(
 
     /** Tab home mới (initial, tạo lại sau khi đóng tab cuối, khôi phục) chưa tải gì → tải [homeUrl]. */
     private fun ensureSelectedLoaded() {
+        if (openingPopup) return
         val id = tabManager.selectedTabId.value ?: return
+        if (id in popupOpeners) return
         val tab = tabManager.tabs.value.firstOrNull { it.id == id } ?: return
         val session = tabManager.session(id) ?: return
         val st = session.state.value
@@ -444,6 +728,7 @@ class BrowserViewModel(
         if (sessions == observedSessions) return
         observedSessions = sessions
         externalApps.keys.retainAll(sessions.toSet())
+        permissionPlans.keys.retainAll(sessions.toSet())
         sessionsJob?.cancel()
         sessionsJob =
             viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -469,6 +754,7 @@ class BrowserViewModel(
                 recomputePending = false
                 observeSessions()
                 processExternalRequests()
+                processWebRequests()
                 publishState()
             } while (recomputePending)
         } finally {
@@ -482,6 +768,7 @@ class BrowserViewModel(
                 .map { it.id }
                 .toSet()
         externalTabIds.retainAll(ids)
+        popupOpeners.keys.retainAll(ids)
         val selectedId = tabManager.selectedTabId.value
         val session = selectedId?.let(tabManager::session)
         val st = session?.state?.value
@@ -521,11 +808,62 @@ class BrowserViewModel(
                 externalPrompt = prompt,
                 externalPromptTabId = selectedId.takeIf { prompt != null },
                 isExternalTab = selectedId != null && selectedId in externalTabIds,
+                pendingRequest = session?.let(::pendingRequestOf),
+                isFullscreen = st?.isFullscreen == true,
             )
     }
 
+    /**
+     * Request đầu tiên (FIFO) của [session] mà người dùng phải trả lời (spec 007 AC13). `PermissionPrompt` chỉ
+     * liệt kê quyền chưa nhớ (AC16) và bị ẩn khi đang chờ hệ thống cấp quyền.
+     */
+    private fun pendingRequestOf(session: EngineSession): EngineRequest? =
+        session.requests.value.firstNotNullOfOrNull { request ->
+            when (request) {
+                is EngineRequest.JsDialog,
+                is EngineRequest.FileChooser,
+                is EngineRequest.HttpAuth,
+                is EngineRequest.Download,
+                -> {
+                    request
+                }
+
+                is EngineRequest.PermissionPrompt -> {
+                    val plan = permissionPlans[session]?.get(request.id)
+                    if (plan == null || plan.inFlight ||
+                        plan.ask.isEmpty()
+                    ) {
+                        null
+                    } else {
+                        request.copy(permissions = plan.ask)
+                    }
+                }
+
+                else -> {
+                    null
+                }
+            }
+        }
+
     private companion object {
         const val NANOS_PER_MILLI = 1_000_000L
+
+        val DOWNLOAD_SCHEMES = setOf("http", "https")
+
+        fun androidPermissions(permission: SitePermission): Set<String> =
+            when (permission) {
+                SitePermission.Camera -> {
+                    setOf(Manifest.permission.CAMERA)
+                }
+
+                SitePermission.Microphone -> {
+                    setOf(Manifest.permission.RECORD_AUDIO)
+                }
+
+                SitePermission.Location -> {
+                    setOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+                }
+            }
 
         /** Tối đa một lần mở thẳng app ngoài mỗi khoảng này cho mỗi tab; request thêm phải qua hộp thoại. */
         const val DIRECT_LAUNCH_INTERVAL_MS = 1_000L

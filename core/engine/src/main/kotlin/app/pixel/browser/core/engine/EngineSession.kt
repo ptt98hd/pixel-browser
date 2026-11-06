@@ -22,6 +22,8 @@ data class EngineState(
     val canGoForward: Boolean = false,
     val securityState: SecurityState = SecurityState.Unknown,
     val error: String? = null,
+    /** Trang đang hiển thị video toàn màn hình (spec 007 AC8). */
+    val isFullscreen: Boolean = false,
 )
 
 /** Một phiên duyệt web (tương ứng một tab) che engine bên dưới để logic test được trên JVM. */
@@ -79,6 +81,12 @@ interface EngineSession {
         requestId: Long,
         response: EngineResponse,
     ): Boolean
+
+    /** View video toàn màn hình (WebView: view của `onShowCustomView`); Fake và khi không fullscreen: null. */
+    val fullscreenView: View?
+
+    /** Yêu cầu engine thoát fullscreen (spec 007 AC8). */
+    fun exitFullscreen()
 }
 
 fun isValidWebUrl(url: String): Boolean {

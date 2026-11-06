@@ -152,3 +152,26 @@ object FileChooserMapper { fun map(request: EngineRequest.FileChooser, extension
 - Download tạm thời giao cho `DownloadManager` hệ thống (thông báo + thư mục Downloads) thay vì chooser mở app khác; B03 sẽ thay thế bằng download manager riêng.
 - Quyền theo site: nhớ trong bộ nhớ cho cả process, dùng chung giữa các tab, nhớ cả Allow và Block; lưu bền ở B07.
 - `javaScriptCanOpenWindowsAutomatically = true`, tự quyết bằng `isUserGesture` để hiện thông báo "đã chặn popup".
+
+## Quyết định (implement, 2026-11-06)
+Các điểm lệch so với nội dung phía trên, đã chấp nhận khi viết test/implement:
+- `RuntimePermissionGate` có thêm `fun isGranted(androidPermission): Boolean` (mặc định `false`) để ViewModel biết quyền OS đã cấp sẵn mà không gọi `request`. Bản thật `AndroidRuntimePermissionGate` (`:feature:browser`, package `web`) chỉ giữ application context; `MainActivity` gắn launcher `RequestMultiplePermissions` (attach ở `onCreate`, detach ở `onDestroy`) nên ViewModel không giữ Activity.
+- AC24 theo Quyết định 2026-11-05: nút `download_start` (thay `download_open_external`) giao link http/https cho `DownloadManager` (thư mục Downloads công khai, `VISIBILITY_VISIBLE_NOTIFY_COMPLETED`, header `User-Agent` = `WebSettings.getDefaultUserAgent`); không mở chooser. `blob:`/`data:` → tự `Dismiss()` + message "chưa hỗ trợ". `DownloadManager` từ chối → message "không bắt đầu tải xuống được".
+- `FileChooserLauncher` nhận `captureUri` được inject; URI đích tạo bởi `createCaptureUri` (dựng trực tiếp `content://<pkg>.fileprovider/captures/<file>`, cùng định dạng với `FileProvider.getUriForFile` cho root `cache-path captures/`, vì `getUriForFile` cache root tĩnh theo authority). Trạng thái "đã mở picker" và URI đích lưu bằng `rememberSaveable` để xoay màn hình không mở picker lần hai.
+- AC17 thắng AC16: origin không an toàn (kể cả `http://` của origin đã nhớ Allow) luôn tự `Dismiss()`.
+- Nhớ một phần (AC16): dialog chỉ hỏi quyền chưa nhớ; Block khi đã nhớ Allow một phần → `Grant(<quyền đã nhớ Allow>)` (rỗng → `Dismiss()`). Back/chạm ngoài hộp thoại quyền → `Dismiss()` và **không** ghi nhớ (chỉ Allow/Block mới nhớ).
+- `BrowserUiState.pendingRequest` không bao gồm `ExternalApp` (spec 006 giữ `externalPrompt` riêng).
+- Fullscreen (AC20): `FLAG_KEEP_SCREEN_ON` trên window + ẩn system bars (swipe để hiện tạm). Engine vẫn nằm trong cây compose (không pause WebView đang phát), `fullscreen_container` phủ lên trên; chrome (top/bottom bar) được gỡ. Mở tab mới (`onNewTab`) và popup cũng thoát fullscreen trước.
+- Popup (AC21): tab popup kế thừa `isPrivate` của opener; ViewModel không tải `homeUrl` vào tab popup. Nếu engine từ chối `AttachWindow`, tab popup bị đóng, opener được chọn lại và request nhận `Dismiss()`.
+- JS dialog: `suppressFurther` chỉ có hiệu lực với dialog có `canSuppress = true` và khi trả lời vẫn ở cùng trang; Cancel/Back mang theo lựa chọn checkbox (`Dismiss(suppressFurther)`). BeforeUnload dùng nút "Rời trang"/"Ở lại". `accept` của file chooser còn được tách theo dấu phẩy trước khi chuẩn hóa.
+- Manifest thêm `uses-feature android.hardware.camera.autofocus required=false` (feature ngầm định của quyền `CAMERA`).
+- Hệ thống từ chối quyền → snackbar có nút "Cài đặt" mở `ACTION_APPLICATION_DETAILS_SETTINGS`.
+
+### Sau code review (2026-11-06)
+- **Không gửi Cookie** cho `DownloadManager` (orchestrator): DownloadManager theo redirect sang origin khác sẽ làm lộ cookie. Tải file cần đăng nhập sẽ có cùng trình tải xuống riêng ở B03.
+- Tên file tải xuống được làm sạch thêm sau `URLUtil.guessFileName`: `/`, `\`, ký tự điều khiển → `_`; rỗng/chỉ dấu chấm (`..`) → `download`.
+- Kết quả file chooser chỉ gồm URI `content://` có authority khác `${applicationId}.fileprovider`, trừ đúng URI chụp do launcher tạo; còn lại bị bỏ, rỗng → `Dismiss()`. Engine (`WebViewEngineSession`) cũng chỉ chuyển URI `content://` cho trang. Chụp bị hủy → xóa file tạm trong `cacheDir/captures`.
+- Response gắn với tab lúc hiện: `EngineRequestHost` nhận `tabId` và dựng lại nội dung theo `(tabId, requestId)`; `BrowserViewModel.onRespond(tabId, requestId, response)` / `onPermissionDecision(tabId, requestId, allow)` chỉ tác động nếu tab đó còn request đang chờ. Bản không có `tabId` dùng tab đang chọn. Đổi tab khi picker đang mở → kết quả của picker cũ bị bỏ (request của tab cũ còn chờ, picker mở lại khi chọn lại tab đó).
+- Bộ nhớ quyền chỉ áp dụng khi origin xin quyền = origin trang chính (thực chất key `(trang, origin xin)` với trang = origin xin). Iframe khác origin luôn hỏi, không ghi nhớ; dialog hiện thêm "Được nhúng trong <host trang>".
+- `exitFullscreen()` bỏ `fullscreenView` ngay (không chờ `onHideCustomView`). Prompt + `Confirm` → `JsPromptResult.confirm(defaultValue.orEmpty())`. Kế hoạch quyền của request đã trả lời/hủy được dọn mỗi lần tính lại.
+- Giới hạn đã biết: (1) hai tab cùng chờ `AndroidRuntimePermissionGate` – mỗi lúc một hộp thoại hệ thống, yêu cầu cũ còn treo coi như bị từ chối (trả quyền OS hiện có); (2) `AttachWindow` gửi `resultMsg` của `onCreateWindow` ngay khi tab popup được tạo; nếu popup bị `Dismiss` thì `resultMsg` không bao giờ được gửi và WebView tự hủy cửa sổ đó.

@@ -36,4 +36,8 @@ data class BrowserUiState(
     val externalPromptTabId: String? = null,
     /** Tab đang chọn được mở từ intent ngoài: Back ở gốc lịch sử quay về app gọi (spec 006 AC14). */
     val isExternalTab: Boolean = false,
+    /** Request UI đầu tiên (FIFO) của tab đang chọn mà người dùng phải trả lời (spec 007 AC13). */
+    val pendingRequest: EngineRequest? = null,
+    /** Tab đang chọn đang phát video toàn màn hình (spec 007 AC20). */
+    val isFullscreen: Boolean = false,
 )

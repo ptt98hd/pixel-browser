@@ -553,4 +553,48 @@ class TabManagerTest {
         assertTrue(s.loadedUrls.isEmpty())
         assertEquals(null, s.state.value.error)
     }
+
+    // --- Spec 007 AC12: openTabForWindow ---
+
+    /** [A, B, C] với A được chọn. */
+    private fun threeTabs(): Triple<TabManager, Tab, List<Tab>> {
+        val m = manager()
+        val home = m.tabs.value.single()
+        m.fake(home.id).visit(a)
+        val tb = m.openTab(b, select = false)
+        val tc = m.openTab(c, select = false)
+        assertEquals(home.id, m.selectedTabId.value)
+        return Triple(m, m.tabs.value.first { it.id == home.id }, listOf(tb, tc))
+    }
+
+    @Test
+    fun ac12_openTabForWindow_insertsRightAfterOpener_andSelectsIt() {
+        val (m, opener, others) = threeTabs()
+        val popup = m.openTabForWindow(opener.id)
+        assertNotNull(popup)
+        assertEquals(listOf(opener.id, popup!!.id, others[0].id, others[1].id), m.ids())
+        assertEquals(popup.id, m.selectedTabId.value)
+    }
+
+    @Test
+    fun ac12_openTabForWindow_newSessionDoesNotLoadAnything() {
+        val (m, opener, _) = threeTabs()
+        val popup = m.openTabForWindow(opener.id)!!
+        val session = m.fake(popup.id)
+        assertTrue(session.loadedUrls.isEmpty())
+        assertEquals("", session.state.value.url)
+        assertFalse(session.state.value.isLoading)
+        assertSame(factory.created.last(), session)
+    }
+
+    @Test
+    fun ac12_openTabForWindow_missingOpener_returnsNull_andKeepsTabs() {
+        val (m, opener, _) = threeTabs()
+        val before = m.ids()
+        val createdBefore = factory.created.size
+        assertNull(m.openTabForWindow("missing"))
+        assertEquals(before, m.ids())
+        assertEquals(opener.id, m.selectedTabId.value)
+        assertEquals(createdBefore, factory.created.size)
+    }
 }

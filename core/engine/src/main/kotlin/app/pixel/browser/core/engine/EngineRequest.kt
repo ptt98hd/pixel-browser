@@ -20,13 +20,117 @@ sealed interface EngineRequest {
         val hasUserGesture: Boolean,
         val isRedirect: Boolean,
     ) : EngineRequest
+
+    /** `alert/confirm/prompt/beforeunload` của trang (spec 007 AC2–AC3). */
+    data class JsDialog(
+        override val id: Long,
+        override val origin: String,
+        val kind: JsDialogKind,
+        val message: String,
+        val defaultValue: String?,
+        val canSuppress: Boolean,
+    ) : EngineRequest
+
+    /** Trang xin quyền camera/micro/vị trí (spec 007 AC4–AC5). */
+    data class PermissionPrompt(
+        override val id: Long,
+        override val origin: String,
+        val permissions: Set<SitePermission>,
+    ) : EngineRequest
+
+    /** `<input type=file>` (spec 007 AC6). */
+    data class FileChooser(
+        override val id: Long,
+        override val origin: String,
+        val acceptTypes: List<String>,
+        val allowMultiple: Boolean,
+        val capture: Boolean,
+    ) : EngineRequest
+
+    /** HTTP Basic/Digest auth (spec 007 AC7). */
+    data class HttpAuth(
+        override val id: Long,
+        override val origin: String,
+        val host: String,
+        val realm: String,
+    ) : EngineRequest
+
+    /** `window.open`/`target=_blank` có gesture (spec 007 AC9). */
+    data class NewWindow(
+        override val id: Long,
+        override val origin: String,
+    ) : EngineRequest
+
+    /** Popup không có gesture đã bị chặn (spec 007 AC9). */
+    data class PopupBlocked(
+        override val id: Long,
+        override val origin: String,
+    ) : EngineRequest
+
+    /** `window.close()` (spec 007 AC10). */
+    data class CloseWindow(
+        override val id: Long,
+        override val origin: String,
+    ) : EngineRequest
+
+    /** Link tải file (spec 007 AC10). */
+    data class Download(
+        override val id: Long,
+        override val origin: String,
+        val url: String,
+        val mimeType: String?,
+        val contentDisposition: String?,
+        val contentLength: Long,
+    ) : EngineRequest
 }
+
+enum class SitePermission { Camera, Microphone, Location }
+
+enum class JsDialogKind { Alert, Confirm, Prompt, BeforeUnload }
 
 sealed interface EngineResponse {
     data class Dismiss(
         val suppressFurther: Boolean = false,
     ) : EngineResponse
+
+    data class Confirm(
+        val suppressFurther: Boolean = false,
+    ) : EngineResponse
+
+    data class PromptText(
+        val value: String,
+        val suppressFurther: Boolean = false,
+    ) : EngineResponse
+
+    data class Files(
+        val uris: List<String>,
+    ) : EngineResponse
+
+    data class Grant(
+        val permissions: Set<SitePermission>,
+    ) : EngineResponse
+
+    /** `toString()` không được chứa [password] (spec 007 AC7). */
+    data class Credentials(
+        val username: String,
+        val password: String,
+    ) : EngineResponse {
+        override fun toString(): String = "Credentials(username=$username, password=***)"
+    }
+
+    data class AttachWindow(
+        val target: EngineSession,
+    ) : EngineResponse
 }
+
+/** https, hoặc http với host localhost/127.0.0.1/[::1] (spec 007 AC11). */
+fun isSecureOrigin(origin: String): Boolean {
+    val normalized = originOf(origin).ifEmpty { return false }
+    val uri = URI(normalized)
+    return uri.scheme == "https" || uri.host in LOCAL_HOSTS
+}
+
+private val LOCAL_HOSTS = setOf("localhost", "127.0.0.1", "[::1]")
 
 /** `scheme://host[:port]` chữ thường, bỏ port mặc định; URL không phải http/https → "". */
 fun originOf(url: String): String {
@@ -103,6 +207,9 @@ class EngineRequestQueue {
         publish()
         return request
     }
+
+    /** Cấp một id mà không tạo request (vd. engine giả ghi response tự động cho dialog bị chặn). */
+    fun reserveId(): Long = nextId++
 
     fun respond(
         requestId: Long,

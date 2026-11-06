@@ -6,6 +6,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
@@ -27,6 +28,7 @@ import app.pixel.browser.feature.browser.intent.AndroidExternalAppLauncher
 import app.pixel.browser.feature.browser.intent.IncomingIntent
 import app.pixel.browser.feature.browser.intent.IncomingIntentResolver
 import app.pixel.browser.feature.browser.intent.from
+import app.pixel.browser.feature.browser.web.AndroidRuntimePermissionGate
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -50,16 +52,25 @@ class MainActivity : ComponentActivity() {
                     ),
                     // Application context: ViewModel sống lâu hơn Activity (launcher thêm FLAG_ACTIVITY_NEW_TASK).
                     externalAppLauncher = AndroidExternalAppLauncher(appContext),
+                    // Gate giữ application context; Activity chỉ gắn launcher xin quyền (xem onCreate).
+                    runtimePermissions = AndroidRuntimePermissionGate(appContext),
                 )
             }
         }
     }
+
+    /** Launcher xin quyền Android cho trang web (spec 007 AC15); kết quả về gate trong ViewModel. */
+    private val permissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+            (viewModel.runtimePermissions as? AndroidRuntimePermissionGate)?.onResult(result)
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         // Bottom bar luôn có nền surfaceContainer sau inset nên không cần lớp scrim của hệ thống (spec 011 AC13).
         window.isNavigationBarContrastEnforced = false
+        (viewModel.runtimePermissions as? AndroidRuntimePermissionGate)?.attach(permissionLauncher)
         setContent {
             val settings by app.themeSettings.collectAsState()
             PixelTheme(settings) {
@@ -102,6 +113,11 @@ class MainActivity : ComponentActivity() {
                 isAppearanceLightNavigationBars = !dark
             }
         }
+    }
+
+    override fun onDestroy() {
+        (viewModel.runtimePermissions as? AndroidRuntimePermissionGate)?.detach(permissionLauncher)
+        super.onDestroy()
     }
 
     override fun onStop() {
