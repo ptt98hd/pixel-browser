@@ -181,3 +181,30 @@ class BookmarksViewModel(repo: BookmarkRepository, files: BookmarkFileGateway, c
 - Persistence: Room 2.8.5 + KSP 2.3.13 (đã xác nhận có trên Maven; Kotlin 2.4.21/AGP 9.5.0) với spike bắt buộc ở 012 AC1; nếu không xanh sau một lượt cập nhật phiên bản thì fallback SQLiteOpenHelper (AC viết trên interface nên không đổi). Mỗi miền một file DB (`history.db`, `bookmarks.db`).
 - Chấp nhận các đề xuất của spec-writer: gốc bookmark "Dấu trang" + thư mục "Đã nhập <ngày>"; thứ tự gợi ý Search/GoTo → Bookmark → History (≤ 8); desktop site không ép bỏ meta viewport (giới hạn đã biết, thử trên máy thật); ngoại lệ desktop lưu JSON file đọc đồng bộ; 015 có thể tách 2 PR (find / desktop); tùy chọn tắt lịch sử thuộc B12/B14.
 - Thứ tự triển khai: 012 → 014 → 013 → 015 (rebase giữa các PR vì cùng sửa BrowserMenu/BrowserActions).
+
+## Quyết định / lệch spec (implementer, 2026-11-10)
+- `BookmarkRepository.bookmark(id)` được thêm (orchestrator chấp nhận) cho `BookmarkEditRoute` và nút "Sửa" của snackbar. `DeletedTree` có constructor công khai (không `internal`) để fixture/test UI tạo được. `BookmarksViewModel.edit` là `suspend`.
+- `maxNodes` (mặc định 20 000) không tính gốc hệ thống; thư mục bọc "Đã nhập <ngày>" của `importTree` nằm ngoài giới hạn (`đã có + số nút nhập > maxNodes` → `Full`), nên file 20 000 nút nhập được vào DB rỗng. `InMemoryBookmarkRepository.importTree` (testFixtures) được chỉnh một dòng cho khớp `RoomBookmarkRepository`. Parser không kiểm tra độ sâu của thư mục bọc, nên cây nhập có thể sâu 17 (không ảnh hưởng thao tác khác).
+- Gốc hệ thống `Dấu trang` được tạo lười ở lần dùng đầu tiên của `RoomBookmarkRepository` (không dùng callback tạo DB) để test dựng DB in-memory trực tiếp; tên gốc lưu tiếng Việt, màn hình hiển thị đúng chuỗi lưu (chưa bản địa hóa tên gốc cho locale en).
+- Tìm kiếm Room dùng `LIKE ... ESCAPE` và `COLLATE NOCASE`: không phân biệt hoa thường chỉ với ASCII (SQLite), khác `InMemory` (Unicode). Chấp nhận; chữ có dấu tiếng Việt phải gõ đúng chữ hoa/thường.
+- Parser: `<A>` đặt dưới `<DL>` lồng quá sâu hoặc quá giới hạn nút vẫn được giữ vào thư mục sâu nhất cho phép (không bỏ nội dung), đặt `truncated = true`; thư mục không có tiêu đề (`<H3>` rỗng) đặt tên `-`; file chỉ có thư mục rỗng (không dấu trang hợp lệ nào) trả `NotBookmarkFile`.
+- Hoàn tác xóa từ hộp thoại sửa trong trình duyệt: `BookmarkEditRoute.onRemoved(DeletedTree)` → `BrowserViewModel.onBookmarkRemoved` (thông báo `BOOKMARK_REMOVED` có nút "Hoàn tác" → `onUndoBookmarkRemoved`, chỉ giữ lần xóa gần nhất). Lưu thành công trong hộp thoại cũng gọi `setLastFolderId(thư mục đã chọn)`.
+- Hộp thoại sửa/đổi tên/di chuyển là lớp phủ trong cây compose (không `AlertDialog`), bộ chọn thư mục trong hộp thoại sửa mở inline. Đổi tên thư mục trùng tên được phép; chỉ tên rỗng là lỗi.
+- Dữ liệu `bookmarks.db` đã nằm trong diện loại trừ của `data_extraction_rules.xml` (domain `database`) và `allowBackup=false`: dấu trang không được sao lưu/chuyển thiết bị (dùng xuất HTML để sao lưu).
+- Nhập qua `ImportDone(imported, skipped)` không báo `truncated`; chưa có thông báo riêng cho trường hợp bị cắt.
+
+## Quyết định (implementer, sau review, 2026-11-10)
+- **Tên gốc / tiền tố nhập bản địa hóa:** kho vẫn lưu `ROOT_TITLE = "Dấu trang"`. `BookmarksViewModel` nhận `rootTitle` và `importFolderPrefix` (mặc định "Dấu trang"/"Đã nhập" vì AC16/AC21 cố định chuỗi này); ánh xạ `id == ROOT_ID` → `rootTitle` làm ở ViewModel cho tiêu đề màn hình, `FolderOption` và `BookmarkHit.folderTitle` (không ở Screen vì test Screen/Route cố định "Dấu trang" ở locale en). `MainActivity` truyền chuỗi `bookmarks_root_title`/`bookmarks_import_folder_prefix` (strings của `:app`, en + vi); `BookmarkEditRoute` có tham số `rootTitle`.
+- **Lệch yêu cầu review:** `<H1>` của file xuất không cố định "Bookmarks" mà là `rootTitle` (VM thay tên gốc trước khi ghi), vì `ac17_exportedTree_hasRootTitleAndDisplayOrder` yêu cầu file chứa "Dấu trang" ở cấu hình mặc định; app truyền chuỗi theo locale. `NetscapeBookmarks.write` vẫn ghi `root.title`.
+- `edit`/`folderOptions`/`runSearch` đi qua `guarded`: lỗi lưu trữ → `NotFound` / danh sách rỗng / tiêu đề thư mục rỗng. `edit` thành công gọi `setLastFolderId` (thống nhất với `BookmarkEditRoute`).
+- `BookmarksRoute` có `DisposableEffect` gọi `onUndoExpired()` khi rời composition, nên `pendingUndo` không treo (cái giá: xoay màn hình khi snackbar còn hiện cũng bỏ khả năng hoàn tác).
+- `BookmarkRepository.childCounts()` (một truy vấn `GROUP BY parentId`) thay N lần `observeChildren(...).first()`.
+- `restore` kiểm tra thêm: `DeletedTree.foldersHeight()` (id duy nhất, cha của mọi nút ngoài gốc thuộc cây và là thư mục, URL dấu trang hợp lệ) và độ sâu `depth(cha)+1+chiều cao ≤ MAX_DEPTH`; vi phạm → `false`.
+- `onToggleBookmark` kiểm lại `observeByUrl(url).first()` trước khi thêm; đã có → phát yêu cầu sửa, không thêm bản trùng.
+- `importTree` giữ `ADD_DATE` hợp lệ làm `createdAt` (giây×1000), nên xuất lại bảo toàn `addedAtSeconds`; thiếu/không hợp lệ → thời điểm nhập.
+- `suggest` ở repo xếp khớp đầu (title, hoặc URL sau scheme/`www.`) của từ khóa đầu tiên trước, rồi `createdAt` mới nhất, nên khớp đầu cũ không bị cắt bởi trần 100 ứng viên của provider. Room xấp xỉ "host" bằng `url LIKE 'http(s)://(www.)từ%'`.
+- Giới hạn âm/0 → danh sách rỗng (SQLite `LIMIT -1` là không giới hạn).
+- `cleanTitle` bỏ ký tự định dạng Unicode (Cf: bidi, zero-width, BOM) trừ ZWNJ/ZWJ (giữ emoji ghép và chữ viết cần chúng); `validUrl` từ chối mọi ký tự Cf.
+- Parser: tên thẻ phải theo sau bởi khoảng trắng, `/` hoặc `>` (hoặc hết file); `<a-b ...>` không còn bị coi là `<A>`.
+- Giới hạn đã biết: file nhập chỉ đọc UTF-8 (không đọc `charset` trong META; byte sai thành U+FFFD). Ghi SAF dùng chế độ `"wt"`.
+- Chạm scrim không còn đóng hộp thoại có ô nhập (sửa dấu trang, tên thư mục); Back/Hủy vẫn đóng. Hộp thoại chọn thư mục đích vẫn đóng khi chạm ngoài.

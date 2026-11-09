@@ -47,4 +47,12 @@ data class BrowserActions(
     val onOpenHistory: () -> Unit = {},
     /** Mở màn hình Cài đặt (spec 014). */
     val onOpenSettings: () -> Unit = {},
+    /** Mở màn hình Dấu trang (spec 013). */
+    val onOpenBookmarks: () -> Unit = {},
+    /** Menu "Thêm/Sửa dấu trang" (spec 013 AC18/AC19). */
+    val onToggleBookmark: () -> Unit = {},
+    /** Mở hộp thoại sửa dấu trang [id] (spec 013 AC18/AC19). */
+    val onEditBookmark: (Long) -> Unit = {},
+    /** "Hoàn tác" trên snackbar sau khi xóa dấu trang từ hộp thoại sửa (spec 013 AC20). */
+    val onUndoBookmarkRemoved: () -> Unit = {},
 )

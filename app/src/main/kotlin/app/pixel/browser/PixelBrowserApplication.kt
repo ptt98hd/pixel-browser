@@ -5,6 +5,10 @@ import android.util.Log
 import androidx.annotation.MainThread
 import androidx.annotation.VisibleForTesting
 import androidx.datastore.preferences.preferencesDataStoreFile
+import app.pixel.browser.core.bookmarks.BookmarkRepository
+import app.pixel.browser.core.bookmarks.BookmarkSuggestionProvider
+import app.pixel.browser.core.bookmarks.RoomBookmarkRepository
+import app.pixel.browser.core.bookmarks.createBookmarkDatabase
 import app.pixel.browser.core.data.DataStoreThemeSettingsStore
 import app.pixel.browser.core.data.ThemeSettings
 import app.pixel.browser.core.data.ThemeSettingsStore
@@ -100,12 +104,23 @@ class PixelBrowserApplication : Application() {
         }
     }
 
-    /** Gợi ý omnibox: mặc định (Go to/Search) rồi lịch sử (spec 012; bookmark thêm ở spec 013). */
+    /** Spec 013: kho dấu trang (`bookmarks.db`); gắn qua [bindBookmarkRepository]. */
+    lateinit var bookmarkRepository: BookmarkRepository
+        private set
+
+    /** Spec 013: gắn [repo] làm [bookmarkRepository] (`onCreate` gọi với Room; test gọi lại với InMemory). */
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    fun bindBookmarkRepository(repo: BookmarkRepository) {
+        bookmarkRepository = repo
+    }
+
+    /** Gợi ý omnibox: mặc định (Go to/Search), dấu trang (spec 013) rồi lịch sử (spec 012). */
     val suggestionProvider: SuggestionProvider
         get() =
             SuggestionAggregator(
                 listOf(
                     DefaultSuggestionProvider { searchEngine.value },
+                    BookmarkSuggestionProvider(bookmarkRepository),
                     HistorySuggestionProvider(historyStore, System::currentTimeMillis),
                 ),
             )
@@ -168,6 +183,7 @@ class PixelBrowserApplication : Application() {
         super.onCreate()
         nightModeController = UiModeNightModeController(this)
         bindHistoryStore(RoomHistoryStore(createHistoryDatabase(this)), ioScope)
+        bindBookmarkRepository(RoomBookmarkRepository(createBookmarkDatabase(this)))
         // Một DataStore cho file `settings` trong cả process (DataStore cấm hai instance cùng file).
         val settingsDataStore =
             createSettingsDataStore(CoroutineScope(SupervisorJob() + Dispatchers.IO)) {

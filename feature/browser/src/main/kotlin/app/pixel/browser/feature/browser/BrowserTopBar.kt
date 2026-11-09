@@ -87,6 +87,19 @@ fun BrowserTopBar(
                 } else {
                     SecurityIcon(state.securityState)
                     UrlDisplayText(state.displayHost, actions.onStartEditing, Modifier.weight(1f))
+                    if (state.isBookmarked && !state.isHome) {
+                        Icon(
+                            imageVector = Icons.Filled.Star,
+                            contentDescription = stringResource(R.string.browser_bookmark_indicator),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier =
+                                Modifier
+                                    .padding(
+                                        horizontal = 8.dp,
+                                    ).size(20.dp)
+                                    .testTag(BrowserTestTags.BOOKMARK_INDICATOR),
+                        )
+                    }
                 }
                 if (showQrButton) {
                     IconButton(onClick = onQrClick, modifier = Modifier.testTag(BrowserTestTags.QR_BUTTON)) {

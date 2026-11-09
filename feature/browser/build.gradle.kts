@@ -25,6 +25,7 @@ dependencies {
     api(project(":core:tabs"))
     api(project(":core:omnibox"))
     api(project(":core:history"))
+    api(project(":core:bookmarks"))
     api(project(":core:ui"))
 
     implementation(platform(libs.compose.bom))
@@ -39,6 +40,7 @@ dependencies {
 
     testImplementation(testFixtures(project(":core:engine")))
     testImplementation(testFixtures(project(":core:history")))
+    testImplementation(testFixtures(project(":core:bookmarks")))
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.kotlinx.coroutines.test)

@@ -94,4 +94,13 @@
     <string name="browser_message_permission_settings">Cài đặt</string>
     <string name="browser_message_download_unsupported">Loại tải xuống này chưa được hỗ trợ</string>
     <string name="browser_message_file_chooser_unavailable">Không có ứng dụng nào để chọn tệp</string>
+    <!-- Spec 013: dấu trang -->
+    <string name="browser_bookmark_add">Thêm dấu trang</string>
+    <string name="browser_bookmark_edit">Sửa dấu trang</string>
+    <string name="browser_bookmarks">Dấu trang</string>
+    <string name="browser_bookmark_indicator">Trang đã được đánh dấu</string>
+    <string name="browser_bookmark_edit_action">Sửa</string>
+    <string name="browser_message_bookmark_added">Đã thêm dấu trang</string>
+    <string name="browser_message_bookmark_failed">Không lưu được dấu trang</string>
+    <string name="browser_message_bookmark_removed">Đã xóa dấu trang</string>
 </resources>

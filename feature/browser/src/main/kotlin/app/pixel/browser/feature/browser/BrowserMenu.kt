@@ -37,6 +37,10 @@ fun BrowserMenu(
     onTheme: () -> Unit = {},
     onHistory: () -> Unit = {},
     onSettings: () -> Unit = {},
+    canBookmark: Boolean = false,
+    isBookmarked: Boolean = false,
+    onToggleBookmark: () -> Unit = {},
+    onBookmarks: () -> Unit = {},
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         DropdownMenuItem(
@@ -66,6 +70,23 @@ fun BrowserMenu(
                 modifier = Modifier.testTag(BrowserTestTags.MENU_SET_DEFAULT),
             )
         }
+        DropdownMenuItem(
+            text = {
+                Text(
+                    stringResource(if (isBookmarked) R.string.browser_bookmark_edit else R.string.browser_bookmark_add),
+                )
+            },
+            onClick = onToggleBookmark,
+            enabled = canBookmark,
+            leadingIcon = { Icon(if (isBookmarked) Icons.Filled.Star else StarOutlineIcon, contentDescription = null) },
+            modifier = Modifier.testTag(BrowserTestTags.MENU_BOOKMARK),
+        )
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.browser_bookmarks)) },
+            onClick = onBookmarks,
+            leadingIcon = { Icon(BookmarksIcon, contentDescription = null) },
+            modifier = Modifier.testTag(BrowserTestTags.MENU_BOOKMARKS),
+        )
         DropdownMenuItem(
             text = { Text(stringResource(R.string.browser_history)) },
             onClick = onHistory,
@@ -102,6 +123,42 @@ private val ThemeIcon: ImageVector by lazy {
                     "M12,22c5.52,0 10,-4.48 10,-10S17.52,2 12,2S2,6.48 2,12S6.48,22 12,22z" +
                         "M13,4.07c3.94,0.49 7,3.85 7,7.93s-3.05,7.44 -7,7.93V4.07z",
                 ),
+            fill = SolidColor(Color.Black),
+        ).build()
+}
+
+/** Sao rỗng (Material Symbols "star", Apache-2.0); `material-icons-core` chỉ có sao đặc. */
+private val StarOutlineIcon: ImageVector by lazy {
+    ImageVector
+        .Builder(
+            name = "StarOutline",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).addPath(
+            pathData =
+                addPathNodes(
+                    "M22,9.24l-7.19,-0.62L12,2L9.19,8.63L2,9.24l5.46,4.73L5.82,21L12,17.27L18.18,21" +
+                        "l-1.63,-7.03L22,9.24z" +
+                        "M12,15.4l-3.76,2.27l1,-4.28l-3.32,-2.88l4.38,-0.38L12,6.1l1.71,4.04l4.38,0.38" +
+                        "l-3.32,2.88l1,4.28L12,15.4z",
+                ),
+            fill = SolidColor(Color.Black),
+        ).build()
+}
+
+/** Icon "bookmarks" (Material Symbols, Apache-2.0). */
+private val BookmarksIcon: ImageVector by lazy {
+    ImageVector
+        .Builder(
+            name = "Bookmarks",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).addPath(
+            pathData = addPathNodes("M17,3H7C5.9,3 5,3.9 5,5v16l7,-3l7,3V5C19,3.9 18.1,3 17,3z"),
             fill = SolidColor(Color.Black),
         ).build()
 }

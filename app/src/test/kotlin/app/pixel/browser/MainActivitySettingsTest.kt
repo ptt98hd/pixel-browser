@@ -13,10 +13,12 @@ import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
+import app.pixel.browser.core.bookmarks.InMemoryBookmarkRepository
 import app.pixel.browser.core.data.search.FakeSearchSettingsStore
 import app.pixel.browser.core.data.search.SearchEngineIds
 import app.pixel.browser.core.data.search.SearchSettings
 import app.pixel.browser.core.engine.WebViewEngineSession
+import app.pixel.browser.core.history.InMemoryHistoryStore
 import app.pixel.browser.core.omnibox.SuggestionKind
 import app.pixel.browser.feature.browser.BrowserTestTags
 import app.pixel.browser.feature.browser.BrowserViewModel
@@ -50,6 +52,9 @@ class MainActivitySettingsTest {
     @Before
     fun bindStore() {
         app.bindSearchStore(store, CoroutineScope(Dispatchers.Unconfined))
+        // Giữ gợi ý ở bộ nhớ: provider Room chạy tuần tự ở thread khác nên waitForIdle() có thể xong trước (flaky).
+        app.bindBookmarkRepository(InMemoryBookmarkRepository())
+        app.bindHistoryStore(InMemoryHistoryStore(), CoroutineScope(Dispatchers.Unconfined))
     }
 
     @After

@@ -95,4 +95,13 @@
     <string name="browser_message_permission_settings">Settings</string>
     <string name="browser_message_download_unsupported">This type of download isn’t supported yet</string>
     <string name="browser_message_file_chooser_unavailable">No app can pick files</string>
+    <!-- Spec 013: dấu trang -->
+    <string name="browser_bookmark_add">Add bookmark</string>
+    <string name="browser_bookmark_edit">Edit bookmark</string>
+    <string name="browser_bookmarks">Bookmarks</string>
+    <string name="browser_bookmark_indicator">Page is bookmarked</string>
+    <string name="browser_bookmark_edit_action">Edit</string>
+    <string name="browser_message_bookmark_added">Bookmark added</string>
+    <string name="browser_message_bookmark_failed">Couldn’t save the bookmark</string>
+    <string name="browser_message_bookmark_removed">Bookmark removed</string>
 </resources>

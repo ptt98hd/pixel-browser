@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Screen -->
+    <string name="bookmarks_close">Close bookmarks</string>
+    <string name="bookmarks_up">Up to parent folder</string>
+    <string name="bookmarks_search">Search bookmarks</string>
+    <string name="bookmarks_search_hint">Search bookmarks</string>
+    <string name="bookmarks_search_close">Close search</string>
+    <string name="bookmarks_new_folder">New folder</string>
+    <string name="bookmarks_import">Import bookmarks</string>
+    <string name="bookmarks_export">Export bookmarks</string>
+    <string name="bookmarks_empty_folder">No bookmarks here yet</string>
+    <string name="bookmarks_empty_search">No bookmarks match your search</string>
+    <plurals name="bookmarks_folder_items">
+        <item quantity="one">%1$d item</item>
+        <item quantity="other">%1$d items</item>
+    </plurals>
+    <string name="bookmarks_item_more_actions">More actions</string>
+    <string name="bookmarks_copied">Link copied</string>
+
+    <!-- Item menu -->
+    <string name="bookmarks_menu_edit">Edit</string>
+    <string name="bookmarks_menu_open_new_tab">Open in new tab</string>
+    <string name="bookmarks_menu_copy">Copy link</string>
+    <string name="bookmarks_menu_move">Move to…</string>
+    <string name="bookmarks_menu_delete">Delete</string>
+    <string name="bookmarks_menu_rename">Rename</string>
+
+    <!-- Folder and move dialogs -->
+    <string name="bookmarks_folder_new_title">New folder</string>
+    <string name="bookmarks_folder_rename_title">Rename folder</string>
+    <string name="bookmarks_folder_name_label">Folder name</string>
+    <string name="bookmarks_folder_name_empty">Enter a name</string>
+    <string name="bookmarks_dialog_ok">OK</string>
+    <string name="bookmarks_dialog_cancel">Cancel</string>
+    <string name="bookmarks_move_title">Move to</string>
+
+    <!-- Undo and messages -->
+    <string name="bookmarks_deleted">Deleted</string>
+    <string name="bookmarks_undo">Undo</string>
+    <plurals name="bookmarks_import_result">
+        <item quantity="one">Imported %1$d bookmark, skipped %2$d</item>
+        <item quantity="other">Imported %1$d bookmarks, skipped %2$d</item>
+    </plurals>
+    <string name="bookmarks_import_too_large">That file is too large to import</string>
+    <string name="bookmarks_import_unreadable">Couldn’t read that file</string>
+    <string name="bookmarks_import_not_bookmarks">That file doesn’t contain bookmarks</string>
+    <string name="bookmarks_import_full">Not enough room for these bookmarks</string>
+    <plurals name="bookmarks_export_done">
+        <item quantity="one">Exported %1$d bookmark</item>
+        <item quantity="other">Exported %1$d bookmarks</item>
+    </plurals>
+    <string name="bookmarks_export_failed">Couldn’t save the file</string>
+    <string name="bookmarks_operation_failed">Something went wrong</string>
+
+    <!-- Edit bookmark dialog -->
+    <string name="bookmark_edit_title">Edit bookmark</string>
+    <string name="bookmark_title_label">Name</string>
+    <string name="bookmark_url_label">Address</string>
+    <string name="bookmark_folder_label">Folder</string>
+    <string name="bookmark_save">Save</string>
+    <string name="bookmark_remove">Remove</string>
+    <string name="bookmark_cancel">Cancel</string>
+    <string name="bookmark_error_invalid_url">Enter a valid web address (http or https)</string>
+    <string name="bookmark_error_invalid_title">Enter a name</string>
+    <string name="bookmark_error_not_found">That bookmark or folder no longer exists</string>
+</resources>

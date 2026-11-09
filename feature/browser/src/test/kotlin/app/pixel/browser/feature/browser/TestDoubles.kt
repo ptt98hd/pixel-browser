@@ -1,5 +1,6 @@
 package app.pixel.browser.feature.browser
 
+import app.pixel.browser.core.bookmarks.BookmarkRepository
 import app.pixel.browser.core.engine.EngineSession
 import app.pixel.browser.core.engine.FakeEngineSession
 import app.pixel.browser.core.history.PageVisit
@@ -206,6 +207,7 @@ class BrowserFixture(
     val thumbnails: TabThumbnailRepository = TabThumbnailRepository.None,
     val pageVisits: PageVisitRecorder = PageVisitRecorder.None,
     maxLiveSessions: Int = TabManager.DEFAULT_MAX_LIVE_SESSIONS,
+    val bookmarks: BookmarkRepository? = null,
 ) {
     val factory = SpySessionFactory()
     val tabManager = TabManager(factory, store, maxLiveSessions)
@@ -223,6 +225,7 @@ class BrowserFixture(
             runtimePermissions = gate,
             thumbnails = thumbnails,
             pageVisits = pageVisits,
+            bookmarks = bookmarks,
         )
 
     fun selected(): SpySession = tabManager.selectedSpy()
@@ -243,6 +246,7 @@ class BrowserFixture(
             thumbnails: TabThumbnailRepository = TabThumbnailRepository.None,
             pageVisits: PageVisitRecorder = PageVisitRecorder.None,
             maxLiveSessions: Int = TabManager.DEFAULT_MAX_LIVE_SESSIONS,
+            bookmarks: BookmarkRepository? = null,
         ): BrowserFixture {
             val store =
                 InMemoryStore().apply {
@@ -255,6 +259,7 @@ class BrowserFixture(
                 thumbnails = thumbnails,
                 pageVisits = pageVisits,
                 maxLiveSessions = maxLiveSessions,
+                bookmarks = bookmarks,
             ).apply {
                 selected().fake.simulatePageFinished(url)
                 selected().resetCalls()

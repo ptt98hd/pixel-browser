@@ -4,6 +4,11 @@ import android.Manifest
 import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.pixel.browser.core.bookmarks.Bookmark
+import app.pixel.browser.core.bookmarks.BookmarkRepository
+import app.pixel.browser.core.bookmarks.BookmarkResult
+import app.pixel.browser.core.bookmarks.BookmarkRules
+import app.pixel.browser.core.bookmarks.DeletedTree
 import app.pixel.browser.core.engine.EngineRequest
 import app.pixel.browser.core.engine.EngineResponse
 import app.pixel.browser.core.engine.EngineSession
@@ -31,11 +36,16 @@ import app.pixel.browser.feature.browser.intent.IncomingRequest
 import app.pixel.browser.feature.browser.tabs.TabThumbnailRepository
 import app.pixel.browser.feature.browser.web.RuntimePermissionGate
 import app.pixel.browser.feature.browser.web.SitePermissionMemory
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 
@@ -70,6 +80,15 @@ object BrowserMessages {
 
     /** Không có app chọn file/chụp ảnh (spec 007 AC19). */
     const val FILE_CHOOSER_UNAVAILABLE = "file_chooser_unavailable"
+
+    /** Đã thêm dấu trang; snackbar có nút "Sửa" (spec 013 AC18/AC19). */
+    const val BOOKMARK_ADDED = "bookmark_added"
+
+    /** Thêm dấu trang thất bại (đầy, lỗi lưu trữ; spec 013 AC18). */
+    const val BOOKMARK_FAILED = "bookmark_failed"
+
+    /** Đã xóa dấu trang từ hộp thoại sửa; snackbar có nút "Hoàn tác" (spec 013 AC20). */
+    const val BOOKMARK_REMOVED = "bookmark_removed"
 }
 
 /**
@@ -95,7 +114,113 @@ class BrowserViewModel(
     private val thumbnails: TabThumbnailRepository = TabThumbnailRepository.None,
     /** Ghi lịch sử khi trang tải xong (spec 012). */
     private val pageVisits: PageVisitRecorder = PageVisitRecorder.None,
+    /** Kho dấu trang (spec 013); null → không có tính năng dấu trang. */
+    private val bookmarks: BookmarkRepository? = null,
 ) : ViewModel() {
+    private val _bookmarkEditRequests = MutableSharedFlow<Long>(extraBufferCapacity = 8)
+
+    /** Yêu cầu mở hộp thoại sửa dấu trang (id) khi người dùng chọn "Sửa dấu trang" (spec 013 AC18). */
+    val bookmarkEditRequests: SharedFlow<Long> = _bookmarkEditRequests.asSharedFlow()
+
+    /** Dấu trang của trang hiện tại (so theo `urlKey`), cập nhật từ [BookmarkRepository.observeByUrl]. */
+    private var currentBookmark: Bookmark? = null
+    private var bookmarkKey: String? = null
+    private var bookmarkJob: Job? = null
+    private var addingBookmark = false
+
+    /** Cây vừa xóa từ hộp thoại sửa, để "Hoàn tác" trên snackbar (chỉ giữ cái gần nhất). */
+    private var removedBookmark: DeletedTree? = null
+
+    /** Thêm dấu trang cho trang hiện tại; đã có thì phát [bookmarkEditRequests] (spec 013 AC18). */
+    fun onToggleBookmark() {
+        val repo = bookmarks ?: return
+        val state = _uiState.value
+        if (!state.canBookmark) return
+        currentBookmark?.let { existing ->
+            _bookmarkEditRequests.tryEmit(existing.id)
+            return
+        }
+        if (addingBookmark) return
+        addingBookmark = true
+        viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            val added =
+                try {
+                    val folder = repo.lastFolderId()
+                    // Chạm hai lần nhanh / nơi khác vừa lưu: kiểm lại trước khi thêm để không tạo bản trùng.
+                    val existing = repo.observeByUrl(state.url).first()
+                    if (existing != null) {
+                        currentBookmark = existing
+                        _bookmarkEditRequests.tryEmit(existing.id)
+                        recompute()
+                        return@launch
+                    }
+                    repo.addBookmark(state.url, state.title, folder) as? BookmarkResult.Ok
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    null
+                } finally {
+                    addingBookmark = false
+                }
+            message = if (added != null) BrowserMessages.BOOKMARK_ADDED else BrowserMessages.BOOKMARK_FAILED
+            if (added != null && bookmarkKey == BookmarkRules.urlKey(added.value.url)) currentBookmark = added.value
+            recompute()
+        }
+    }
+
+    /** Một dấu trang vừa bị xóa từ hộp thoại sửa: hiện snackbar "Đã xóa" có "Hoàn tác" (spec 013 AC20). */
+    fun onBookmarkRemoved(tree: DeletedTree) {
+        removedBookmark = tree
+        message = BrowserMessages.BOOKMARK_REMOVED
+        recompute()
+    }
+
+    /** Hoàn tác lần xóa dấu trang gần nhất (nếu còn khôi phục được). */
+    fun onUndoBookmarkRemoved() {
+        val tree = removedBookmark ?: return
+        removedBookmark = null
+        val repo = bookmarks ?: return
+        viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            val restored =
+                try {
+                    repo.restore(tree)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    false
+                }
+            if (!restored) {
+                message = BrowserMessages.BOOKMARK_FAILED
+                recompute()
+            }
+        }
+    }
+
+    /** Theo dõi dấu trang của [url] (chỉ khi có thể lưu); đổi `urlKey` mới khởi động lại collector. */
+    private fun trackBookmark(url: String?) {
+        val repo = bookmarks
+        val key = if (repo != null && url != null) BookmarkRules.urlKey(url) else null
+        if (key == bookmarkKey) return
+        bookmarkKey = key
+        bookmarkJob?.cancel()
+        bookmarkJob = null
+        currentBookmark = null
+        if (repo == null || url == null) return
+        bookmarkJob =
+            viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                try {
+                    repo.observeByUrl(url).collect {
+                        currentBookmark = it
+                        recompute()
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    currentBookmark = null
+                }
+            }
+    }
+
     /** Engine hiện tại (đọc mỗi lần dùng: onSubmit, intent, gợi ý). */
     val searchEngine: SearchEngine get() = searchEngines.value
 
@@ -870,6 +995,8 @@ class BrowserViewModel(
                 }
             }
         val url = if (isHome) "" else st?.url ?: tabs.firstOrNull { it.id == selectedId }?.url.orEmpty()
+        val canBookmark = bookmarks != null && !isHome && isValidWebUrl(url)
+        trackBookmark(url.takeIf { canBookmark })
         val isExternal = selectedId != null && selectedId in externalTabIds
         // Tab mở từ intent: Back ở gốc lịch sử engine quay về app gọi (spec 006 AC14) nên `backToHome` không tính.
         val canGoBack =
@@ -907,6 +1034,9 @@ class BrowserViewModel(
                 isHome = isHome,
                 pendingRequest = session?.let(::pendingRequestOf),
                 isFullscreen = st?.isFullscreen == true,
+                canBookmark = canBookmark,
+                isBookmarked = canBookmark && currentBookmark != null,
+                bookmarkId = currentBookmark?.id.takeIf { canBookmark },
             )
     }
 
