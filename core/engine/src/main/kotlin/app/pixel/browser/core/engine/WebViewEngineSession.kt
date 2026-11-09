@@ -125,6 +125,11 @@ class WebViewEngineSession(
                     if (!isClosed) _state.update { it.copy(title = title) }
                 }
 
+                override fun onReceivedIcon(
+                    view: WebView,
+                    icon: Bitmap,
+                ) = dispatchReceivedIcon(icon)
+
                 override fun onJsAlert(
                     view: WebView,
                     url: String,
@@ -233,6 +238,7 @@ class WebViewEngineSession(
         }
         sslErrorInLoad = false
         dialogGuard.onNewPage()
+        _favicon.value = null
         _state.update {
             it.copy(url = url, isLoading = true, progress = 0, error = null, securityState = SecurityState.Unknown)
         }
@@ -345,6 +351,7 @@ class WebViewEngineSession(
         exitFullscreen()
         handleHideCustomView()
         isClosed = true
+        _favicon.value = null
         requestQueue.dismissAll()
         pendingPermissions.clear()
         pendingGeolocation.clear()
@@ -362,6 +369,7 @@ class WebViewEngineSession(
     fun dispatchPageStarted(url: String) {
         if (isClosed) return
         dialogGuard.onNewPage()
+        _favicon.value = null
         val security = if (sslErrorInLoad) SecurityState.Insecure else SecurityState.Unknown
         _state.update { it.copy(url = url, isLoading = true, securityState = security) }
     }
@@ -488,6 +496,16 @@ class WebViewEngineSession(
             },
         )
         return true
+    }
+
+    // --- Spec 009: favicon ---
+
+    private val _favicon = MutableStateFlow<Bitmap?>(null)
+    override val favicon: StateFlow<Bitmap?> = _favicon
+
+    /** Điểm vào của `WebChromeClient.onReceivedIcon`. */
+    fun dispatchReceivedIcon(bitmap: Bitmap) {
+        if (!isClosed) _favicon.value = bitmap
     }
 
     private val pageOrigin: String get() = originOf(_state.value.url)

@@ -14,7 +14,7 @@ Trạng thái: ⬜ chưa làm · 🟨 đang làm · ✅ xong. Mỗi feature có 
 | A06 | Bottom bar 5 nút: back / forward / home / tabs / menu | ✅ |
 | A07 | Long-press: back→lên đầu, forward→xuống cuối, home→focus URL, tabs→tab mới, menu→refresh | ✅ |
 | A08 | Cử chỉ vuốt (vuốt cạnh = back/forward, vuốt bottom bar = đổi tab, pull-to-refresh) | 🟨 |
-| A09 | Tab switcher (lưới, thumbnail, đóng bằng vuốt, tab mới) | 🟨 |
+| A09 | Tab switcher (lưới, thumbnail, đóng bằng vuốt, tab mới) | ✅ |
 | A10 | Home page chỉnh được (shortcut, ảnh nền, ô tìm kiếm, sắp xếp) (WebView lười cho tab home: E05) | ✅ |
 | A11 | File chooser, camera/mic/location permission prompts, fullscreen video, window.open/popup, JS dialogs, HTTP auth | ✅ |
 | A12 | Mở link từ app khác (VIEW intent), đặt làm trình duyệt mặc định (role) | ✅ |

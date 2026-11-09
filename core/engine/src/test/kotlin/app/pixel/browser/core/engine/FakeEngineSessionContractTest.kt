@@ -1,5 +1,6 @@
 package app.pixel.browser.core.engine
 
+import android.graphics.Bitmap
 import android.view.View
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -7,7 +8,10 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+@RunWith(RobolectricTestRunner::class)
 class FakeEngineSessionContractTest : EngineSessionContractTest() {
     override fun createSession(): EngineSession = FakeEngineSession()
 
@@ -79,6 +83,8 @@ class FakeEngineSessionContractTest : EngineSessionContractTest() {
     override fun EngineSession.emitHideFullscreen() = fake.simulateExitFullscreen()
 
     override fun attachTarget(): EngineSession = FakeEngineSession()
+
+    override fun EngineSession.emitFavicon(bitmap: Bitmap) = fake.simulateFavicon(bitmap)
 
     // --- Spec 005 ---
 

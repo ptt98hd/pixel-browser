@@ -16,6 +16,7 @@ import app.pixel.browser.core.tabs.FileTabSnapshotStore
 import app.pixel.browser.core.tabs.TabSnapshotStore
 import app.pixel.browser.core.ui.NightModeController
 import app.pixel.browser.core.ui.UiModeNightModeController
+import app.pixel.browser.feature.browser.tabs.BitmapTabThumbnailRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -41,6 +42,14 @@ class PixelBrowserApplication : Application() {
      * ghi `tabs.json` không chồng nhau.
      */
     val ioScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
+
+    /**
+     * Thumbnail tab (spec 009) trong `cacheDir/thumbnails` (hệ thống có thể xóa bất cứ lúc nào). Ghi/xóa file trên
+     * IO tuần tự; tab ẩn danh không bao giờ ghi đĩa.
+     */
+    val thumbnails: BitmapTabThumbnailRepository by lazy {
+        BitmapTabThumbnailRepository(File(cacheDir, "thumbnails"), Dispatchers.IO)
+    }
 
     private val themeLock = Any()
     private var themeBinding: ThemeBinding? = null
@@ -68,6 +77,12 @@ class PixelBrowserApplication : Application() {
                 preferencesDataStoreFile(SETTINGS_DATASTORE)
             }
         bindThemeStore(DataStoreThemeSettingsStore(settingsDataStore), ioScope)
+    }
+
+    /** Spec 009: `TRIM_MEMORY_BACKGROUND` trở lên xóa cache thumbnail trong bộ nhớ (đĩa giữ). */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        thumbnails.trim(level)
     }
 
     /**

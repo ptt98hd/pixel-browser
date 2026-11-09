@@ -1,6 +1,7 @@
 package app.pixel.browser.feature.browser
 
 import android.Manifest
+import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.pixel.browser.core.engine.EngineRequest
@@ -25,6 +26,7 @@ import app.pixel.browser.core.tabs.TabsSnapshot
 import app.pixel.browser.feature.browser.intent.ExternalAppLauncher
 import app.pixel.browser.feature.browser.intent.ExternalLaunchResult
 import app.pixel.browser.feature.browser.intent.IncomingRequest
+import app.pixel.browser.feature.browser.tabs.TabThumbnailRepository
 import app.pixel.browser.feature.browser.web.RuntimePermissionGate
 import app.pixel.browser.feature.browser.web.SitePermissionMemory
 import kotlinx.coroutines.CoroutineStart
@@ -87,6 +89,8 @@ class BrowserViewModel(
     private val permissionMemory: SitePermissionMemory = SitePermissionMemory(),
     /** Xin quyền Android lúc chạy (spec 007 AC15); UI dùng chung cho chụp ảnh (AC19). */
     val runtimePermissions: RuntimePermissionGate = RuntimePermissionGate { emptySet() },
+    /** Thumbnail của tab cho tab switcher (spec 009). */
+    private val thumbnails: TabThumbnailRepository = TabThumbnailRepository.None,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(BrowserUiState())
     val uiState: StateFlow<BrowserUiState> = _uiState.asStateFlow()
@@ -142,6 +146,12 @@ class BrowserViewModel(
     private var recomputePending = false
 
     init {
+        thumbnails.retainOnly(
+            tabManager.tabs.value
+                .filterNot { it.isPrivate }
+                .map { it.id }
+                .toSet(),
+        )
         recompute()
         viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
             merge(tabManager.tabs, tabManager.selectedTabId).collect { recompute() }
@@ -175,6 +185,7 @@ class BrowserViewModel(
 
     fun onNewTab() {
         stopEditing()
+        captureCurrentThumbnail()
         exitFullscreen(current())
         tabManager.openTab(HOME_URL)
         recompute()
@@ -247,14 +258,52 @@ class BrowserViewModel(
 
     fun onSelectTab(id: String) {
         stopEditing()
-        if (id != tabManager.selectedTabId.value) exitFullscreen(current())
+        if (id != tabManager.selectedTabId.value) {
+            captureCurrentThumbnail()
+            exitFullscreen(current())
+        }
         tabManager.selectTab(id)
         recompute()
+    }
+
+    /** Spec 009 AC8: chụp thumbnail tab hiện tại trước khi mở switcher. */
+    fun onOpenTabSwitcher() {
+        stopEditing()
+        captureCurrentThumbnail()
+        recompute()
+    }
+
+    /** Spec 009 AC9: hoàn tác đóng tab gần nhất (lựa chọn tab theo [TabManager.undoClose]). */
+    fun onUndoCloseTab() {
+        tabManager.undoClose()
+        recompute()
+    }
+
+    /** Spec 009 AC9: đóng tất cả tab, còn lại một tab home. */
+    fun onCloseAllTabs() {
+        stopEditing()
+        exitFullscreen(current())
+        val old = tabManager.tabs.value.map { it.id }
+        tabManager.closeAllTabs()
+        old.forEach(thumbnails::remove)
+        recompute()
+    }
+
+    /** Favicon của session tab [tabId] (spec 009); null nếu tab không có session sống. */
+    fun faviconOf(tabId: String): StateFlow<Bitmap?>? = tabManager.session(tabId)?.favicon
+
+    private fun captureCurrentThumbnail() {
+        val id = tabManager.selectedTabId.value ?: return
+        val tab = tabManager.tabs.value.firstOrNull { it.id == id } ?: return
+        if (tab.isHome) return
+        val session = tabManager.session(id) ?: return
+        thumbnails.capture(id, session, persist = !tab.isPrivate)
     }
 
     fun onCloseTab(id: String) {
         exitFullscreen(tabManager.session(id))
         tabManager.closeTab(id)
+        thumbnails.remove(id)
         recompute()
     }
 
@@ -759,13 +808,14 @@ class BrowserViewModel(
         val tabs =
             tabManager.tabs.value.map { tab ->
                 if (tab.isHome) {
-                    TabItem(id = tab.id, title = "", url = "")
+                    TabItem(id = tab.id, title = "", url = "", isHome = true, isPrivate = tab.isPrivate)
                 } else {
                     val s = tabManager.session(tab.id)?.state?.value
                     TabItem(
                         id = tab.id,
                         title = s?.title?.ifEmpty { null } ?: tab.title,
                         url = s?.url?.ifEmpty { null } ?: tab.url,
+                        isPrivate = tab.isPrivate,
                     )
                 }
             }

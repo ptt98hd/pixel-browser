@@ -8,7 +8,7 @@ import androidx.compose.ui.test.performTextReplacement
 import app.pixel.browser.feature.browser.BrowserTestTags.BTN_MENU
 import app.pixel.browser.feature.browser.BrowserTestTags.BTN_TABS
 import app.pixel.browser.feature.browser.BrowserTestTags.MENU_RELOAD
-import app.pixel.browser.feature.browser.BrowserTestTags.TAB_SHEET
+import app.pixel.browser.feature.browser.BrowserTestTags.TAB_SWITCHER
 import app.pixel.browser.feature.browser.BrowserTestTags.URL_DISPLAY
 import app.pixel.browser.feature.browser.BrowserTestTags.URL_FIELD
 import app.pixel.browser.feature.browser.intent.IncomingRequest
@@ -53,12 +53,14 @@ class BrowserBackHandlingTest {
     // --- AC31 (a) ---
 
     @Test
-    fun ac31a_back_closesTabSheet_withoutGoBack() {
+    fun ac14_ac31a_back_closesTabSwitcher_keepsSelection_withoutGoBack() {
         launch(withHistory = true)
         rule.onNodeWithTag(BTN_TABS).performClick()
-        rule.onNodeWithTag(TAB_SHEET).assertExists()
+        rule.onNodeWithTag(TAB_SWITCHER).assertExists()
+        val selectedBefore = f.tabManager.selectedTabId.value
         pressBack()
-        rule.onNodeWithTag(TAB_SHEET).assertDoesNotExist()
+        rule.onNodeWithTag(TAB_SWITCHER).assertDoesNotExist()
+        assertEquals(selectedBefore, f.tabManager.selectedTabId.value)
         assertEquals(0, f.selected().goBackCalls)
         assertFalse(rule.activity.isFinishing)
     }

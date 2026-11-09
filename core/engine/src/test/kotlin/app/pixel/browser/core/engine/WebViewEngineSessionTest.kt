@@ -3,6 +3,7 @@ package app.pixel.browser.core.engine
 import android.app.Activity
 import android.content.Context
 import android.content.MutableContextWrapper
+import android.graphics.Bitmap
 import android.net.Uri
 import android.view.View
 import android.webkit.PermissionRequest
@@ -127,6 +128,8 @@ class WebViewEngineSessionTest : EngineSessionContractTest() {
     override fun EngineSession.emitHideFullscreen() = web.chromeClient.onHideCustomView()
 
     override fun attachTarget(): EngineSession = WebViewEngineSession(context)
+
+    override fun EngineSession.emitFavicon(bitmap: Bitmap) = web.dispatchReceivedIcon(bitmap)
 
     @Test
     fun defaultSettings_areSecure() {

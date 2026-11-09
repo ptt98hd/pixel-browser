@@ -26,7 +26,7 @@ import app.pixel.browser.feature.browser.BrowserTestTags.MENU_RELOAD
 import app.pixel.browser.feature.browser.BrowserTestTags.MENU_SHARE
 import app.pixel.browser.feature.browser.BrowserTestTags.PROGRESS
 import app.pixel.browser.feature.browser.BrowserTestTags.TAB_COUNT
-import app.pixel.browser.feature.browser.BrowserTestTags.TAB_SHEET
+import app.pixel.browser.feature.browser.BrowserTestTags.TAB_SWITCHER
 import app.pixel.browser.feature.browser.BrowserTestTags.URL_DISPLAY
 import app.pixel.browser.feature.browser.BrowserTestTags.URL_FIELD
 import app.pixel.browser.feature.browser.BrowserTestTags.suggestion
@@ -250,10 +250,10 @@ class BrowserScreenTest {
     }
 
     @Test
-    fun ac16_tapTabs_opensTabSheet() {
+    fun ac16_tapTabs_opensTabSwitcher() {
         launch()
         rule.onNodeWithTag(BTN_TABS).performClick()
-        rule.onNodeWithTag(TAB_SHEET).assertExists()
+        rule.onNodeWithTag(TAB_SWITCHER).assertExists()
     }
 
     @Test
@@ -322,7 +322,7 @@ class BrowserScreenTest {
     // --- AC21 ---
 
     @Test
-    fun ac21_longPressTabs_opensNewSelectedHomeTab_withoutSheet() {
+    fun ac21_longPressTabs_opensNewSelectedHomeTab_withoutSwitcher() {
         launch()
         val before =
             f.tabManager.tabs.value
@@ -335,7 +335,7 @@ class BrowserScreenTest {
         assertTrue(f.selected().loadUrlCalls.isEmpty())
         assertTrue(f.viewModel.uiState.value.isHome)
         rule.onNodeWithTag(TAB_COUNT, useUnmergedTree = true).assertTextIs("2")
-        rule.onNodeWithTag(TAB_SHEET).assertDoesNotExist()
+        rule.onNodeWithTag(TAB_SWITCHER).assertDoesNotExist()
     }
 
     // --- AC22 ---

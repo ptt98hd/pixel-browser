@@ -77,11 +77,15 @@ class TabManager(
         val index: Int,
         val state: ByteArray?,
         val pageUnderHome: PageUnderHome?,
+        val wasSelected: Boolean,
     )
 
     private val entries = mutableListOf<Entry>()
     private val closed = ArrayDeque<ClosedTab>()
     private var useCounter = 0L
+
+    /** Id của tab home do [closeTab]/[closeAllTabs] tự tạo (spec 009 AC2); bị bỏ nếu còn chưa dùng khi undo. */
+    private var autoHomeId: String? = null
 
     private val _tabs = MutableStateFlow<List<Tab>>(emptyList())
     val tabs: StateFlow<List<Tab>> = _tabs
@@ -140,26 +144,72 @@ class TabManager(
         val entry = entries.removeAt(index)
         val session = entry.session
         val state = entry.persistableState()
-        closed.addLast(ClosedTab(entry.syncFromSession(), index, state, entry.pageUnderHome))
-        while (closed.size > MAX_UNDO) closed.removeFirst()
+        pushClosed(entry, index, state, wasSelected = id == _selectedTabId.value)
         session?.close()
 
         when {
-            entries.isEmpty() -> activate(newEntry(HOME_URL, isPrivate = false).also { entries += it })
+            entries.isEmpty() -> activateAutoHome()
             id == _selectedTabId.value -> activate(entries[index.coerceAtMost(entries.lastIndex)])
         }
         publish()
     }
 
-    /** Mở lại tab đóng gần nhất (tối đa [MAX_UNDO] tab), về đúng vị trí cũ, cùng id, và chọn nó. */
+    /**
+     * Mở lại tab đóng gần nhất (tối đa [MAX_UNDO] tab), về đúng vị trí cũ, cùng id. Tab được chọn lại chỉ khi nó
+     * là tab đang chọn lúc bị đóng (spec 009 AC1). Tab home tự tạo còn chưa dùng bị bỏ trước khi khôi phục (AC2).
+     */
     fun undoClose(): Tab? {
         val c = closed.removeLastOrNull() ?: return null
+        dropUnusedAutoHome()
         val tab = if (find(c.tab.id) == null) c.tab else c.tab.copy(id = newId())
         val entry = Entry(tab, savedState = c.state, pageUnderHome = c.pageUnderHome)
         entries.add(c.index.coerceIn(0, entries.size), entry)
-        activate(entry)
+        if (c.wasSelected || entries.none { it.id == _selectedTabId.value }) activate(entry)
         publish()
         return entry.tab
+    }
+
+    /**
+     * Spec 009: đóng mọi tab (kể cả ẩn danh) từ phải sang trái (mỗi tab vào ngăn xếp undo với index gốc) rồi tạo
+     * một tab home mới được chọn.
+     */
+    fun closeAllTabs() {
+        val selected = _selectedTabId.value
+        for (index in entries.indices.reversed()) {
+            val entry = entries.removeAt(index)
+            val state = entry.persistableState()
+            pushClosed(entry, index, state, wasSelected = entry.id == selected)
+            entry.session?.close()
+        }
+        activateAutoHome()
+        publish()
+    }
+
+    private fun pushClosed(
+        entry: Entry,
+        index: Int,
+        state: ByteArray?,
+        wasSelected: Boolean,
+    ) {
+        closed.addLast(ClosedTab(entry.syncFromSession(), index, state, entry.pageUnderHome, wasSelected))
+        while (closed.size > MAX_UNDO) closed.removeFirst()
+    }
+
+    private fun activateAutoHome() {
+        val home = newEntry(HOME_URL, isPrivate = false)
+        entries += home
+        autoHomeId = home.id
+        activate(home)
+    }
+
+    private fun dropUnusedAutoHome() {
+        val only = entries.singleOrNull() ?: return
+        if (only.id != autoHomeId) return
+        only.syncFromSession()
+        if (!only.tab.isHome || only.pageUnderHome != null || only.tab.backToHome) return
+        entries.clear()
+        only.session?.close()
+        autoHomeId = null
     }
 
     /**

@@ -10,6 +10,7 @@ import app.pixel.browser.core.tabs.TabsSnapshot
 import app.pixel.browser.feature.browser.intent.ExternalAppLauncher
 import app.pixel.browser.feature.browser.intent.ExternalLaunchResult
 import app.pixel.browser.feature.browser.intent.ExternalTarget
+import app.pixel.browser.feature.browser.tabs.TabThumbnailRepository
 import app.pixel.browser.feature.browser.web.RuntimePermissionGate
 import app.pixel.browser.feature.browser.web.SitePermissionMemory
 
@@ -127,6 +128,58 @@ class FakePermissionGate(
     override fun isGranted(androidPermission: String): Boolean = androidPermission in alreadyGranted
 }
 
+/**
+ * [TabThumbnailRepository] giả (spec 009): ghi lại mọi lời gọi cùng `selectedTabId` tại thời điểm gọi.
+ * [selectedTabId] được [BrowserFixture] nối với `TabManager` ngay sau khi tạo.
+ */
+class FakeTabThumbnailRepository : TabThumbnailRepository {
+    sealed interface Call {
+        data class Capture(
+            val tabId: String,
+            val session: EngineSession,
+            val persist: Boolean,
+            val selectedAtCall: String?,
+        ) : Call
+
+        data class Remove(
+            val tabId: String,
+        ) : Call
+
+        data class RetainOnly(
+            val tabIds: Set<String>,
+        ) : Call
+
+        data object ClearDisk : Call
+    }
+
+    var selectedTabId: () -> String? = { null }
+    val calls = mutableListOf<Call>()
+
+    val captures: List<Call.Capture> get() = calls.filterIsInstance<Call.Capture>()
+    val removed: List<String> get() = calls.filterIsInstance<Call.Remove>().map { it.tabId }
+    val retains: List<Call.RetainOnly> get() = calls.filterIsInstance<Call.RetainOnly>()
+
+    override fun capture(
+        tabId: String,
+        session: EngineSession,
+        persist: Boolean,
+    ) {
+        calls += Call.Capture(tabId, session, persist, selectedTabId())
+    }
+
+    override fun remove(tabId: String) {
+        calls += Call.Remove(tabId)
+    }
+
+    override fun retainOnly(tabIds: Set<String>) {
+        calls += Call.RetainOnly(tabIds)
+    }
+
+    override fun clearDisk() {
+        calls += Call.ClearDisk
+    }
+}
+
 /** Môi trường chung: TabManager thật + SpySession + ViewModel. */
 class BrowserFixture(
     store: InMemoryStore = InMemoryStore(),
@@ -134,9 +187,15 @@ class BrowserFixture(
     clock: () -> Long = { 0L },
     val permissionMemory: SitePermissionMemory = SitePermissionMemory(),
     val gate: FakePermissionGate = FakePermissionGate(),
+    val thumbnails: TabThumbnailRepository = TabThumbnailRepository.None,
 ) {
     val factory = SpySessionFactory()
     val tabManager = TabManager(factory, store)
+
+    // Nối FakeTabThumbnailRepository với tab đang chọn trước khi ViewModel được tạo.
+    @Suppress("unused")
+    private val boundThumbnails =
+        (thumbnails as? FakeTabThumbnailRepository)?.also { it.selectedTabId = { tabManager.selectedTabId.value } }
     val viewModel =
         BrowserViewModel(
             tabManager,
@@ -144,6 +203,7 @@ class BrowserFixture(
             clock = clock,
             permissionMemory = permissionMemory,
             runtimePermissions = gate,
+            thumbnails = thumbnails,
         )
 
     fun selected(): SpySession = tabManager.selectedSpy()
@@ -161,13 +221,14 @@ class BrowserFixture(
         fun onPage(
             url: String,
             launcher: RecordingLauncher = RecordingLauncher(),
+            thumbnails: TabThumbnailRepository = TabThumbnailRepository.None,
         ): BrowserFixture {
             val store =
                 InMemoryStore().apply {
                     stored =
                         TabsSnapshot(listOf(TabSnapshot(PAGE_TAB_ID, url)), PAGE_TAB_ID)
                 }
-            return BrowserFixture(store, launcher).apply {
+            return BrowserFixture(store, launcher, thumbnails = thumbnails).apply {
                 selected().fake.simulatePageFinished(url)
                 selected().resetCalls()
             }

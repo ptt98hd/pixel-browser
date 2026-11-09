@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.content.MutableContextWrapper
+import android.graphics.Bitmap
 import android.net.Uri
 import android.provider.Settings
 import android.view.View
@@ -39,6 +40,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -58,7 +61,11 @@ import app.pixel.browser.core.omnibox.UrlDisplay
 import app.pixel.browser.feature.browser.intent.DefaultBrowserController
 import app.pixel.browser.feature.browser.intent.RoleManagerDefaultBrowser
 import app.pixel.browser.feature.browser.intent.defaultAppsSettingsIntent
+import app.pixel.browser.feature.browser.tabs.BitmapTabThumbnailRepository
+import app.pixel.browser.feature.browser.tabs.TabSwitcher
 import app.pixel.browser.feature.browser.web.EngineRequestHost
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /** Có thể chia sẻ [url] không: không chia sẻ URL rỗng/trang trống (AC26). */
@@ -78,6 +85,12 @@ fun BrowserScreen(
     engineContent: @Composable () -> Unit = {},
     /** Spec 010: vẽ thay cho [engineContent] khi `state.isHome`. */
     homeContent: @Composable () -> Unit = {},
+    /** Spec 009: ảnh thumbnail của tab cho tab switcher. */
+    thumbnail: @Composable (String) -> ImageBitmap? = { null },
+    /** Spec 009: favicon của tab cho tab switcher. */
+    favicon: @Composable (String) -> ImageBitmap? = { null },
+    /** Spec 009: báo cho [BrowserRoute] khi tab switcher mở/đóng để pause/resume WebView phía sau. */
+    onSwitcherOpenChange: (Boolean) -> Unit = {},
 ) {
     var menuOpen by rememberSaveable { mutableStateOf(false) }
     var tabsOpen by rememberSaveable { mutableStateOf(false) }
@@ -96,6 +109,9 @@ fun BrowserScreen(
     }
     // Spec 007 AC20: khi fullscreen, Back thoát fullscreen trước mọi nhánh của AC31 (handler đăng ký sau thắng).
     BackHandler(enabled = state.isFullscreen) { actions.onExitFullscreen() }
+
+    val currentOnSwitcherOpenChange by rememberUpdatedState(onSwitcherOpenChange)
+    LaunchedEffect(tabsOpen) { currentOnSwitcherOpenChange(tabsOpen) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -128,35 +144,36 @@ fun BrowserScreen(
                     actions = actions,
                     menuOpen = menuOpen,
                     onMenuOpenChange = { menuOpen = it },
-                    onTabsClick = { tabsOpen = true },
+                    onTabsClick = {
+                        actions.onOpenTabSwitcher()
+                        tabsOpen = true
+                    },
                     onThemeClick = { themeDialogOpen = true },
                 )
             }
         }
         if (state.isFullscreen) fullscreenContent()
+        // Spec 009: toàn màn hình, phủ cả top/bottom bar; có snackbar "Hoàn tác" riêng nằm trên lưới.
+        if (tabsOpen) {
+            TabSwitcher(
+                tabs = state.tabs,
+                selectedTabId = state.selectedTabId,
+                thumbnail = thumbnail,
+                favicon = favicon,
+                onSelect = actions.onSelectTab,
+                onClose = actions.onCloseTab,
+                onUndoClose = actions.onUndoCloseTab,
+                onNewTab = actions.onNewTab,
+                onCloseAll = actions.onCloseAllTabs,
+                onDismiss = { tabsOpen = false },
+            )
+        }
     }
 
     val prompt = state.externalPrompt
     val promptTabId = state.externalPromptTabId
     if (prompt != null && promptTabId != null) {
         ExternalAppDialog(request = prompt) { open -> actions.onExternalAppDecision(promptTabId, prompt.id, open) }
-    }
-
-    if (tabsOpen) {
-        TabSwitcherSheet(
-            tabs = state.tabs,
-            selectedTabId = state.selectedTabId,
-            onSelect = {
-                tabsOpen = false
-                actions.onSelectTab(it)
-            },
-            onClose = actions.onCloseTab,
-            onNewTab = {
-                tabsOpen = false
-                actions.onNewTab()
-            },
-            onDismiss = { tabsOpen = false },
-        )
     }
 
     if (themeDialogOpen) {
@@ -251,6 +268,8 @@ fun BrowserRoute(
     onThemeChange: (ThemeSettings) -> Unit = {},
     /** Spec 010: trang chủ (`:app` nối `HomeRoute`), hiển thị khi tab đang chọn ở home. */
     homeContent: @Composable () -> Unit = {},
+    /** Spec 009: kho thumbnail (`:app` tạo, cũng nhận `onTrimMemory`); null → mọi thẻ dùng placeholder. */
+    thumbnails: BitmapTabThumbnailRepository? = null,
 ) {
     val state by viewModel.uiState.collectAsState()
     val session by viewModel.selectedSession.collectAsState()
@@ -264,7 +283,16 @@ fun BrowserRoute(
     val setDefault = rememberDefaultBrowserRequest(viewModel, controller)
     TrackAppVisibility(viewModel)
     // Ở home EngineContainer không được compose nên không tự pause session bên dưới (spec 010 AC18).
-    LaunchedEffect(session, state.isHome) { if (state.isHome) session?.onPause() }
+    // Tab switcher phủ toàn màn hình (spec 009): pause trang phía sau khi nó mở, resume khi đóng.
+    var switcherOpen by remember { mutableStateOf(false) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(session, state.isHome, switcherOpen) {
+        if (state.isHome || switcherOpen) {
+            session?.onPause()
+        } else if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            session?.onResume()
+        }
+    }
     val actions =
         remember(viewModel, context, shareTitle, setDefault, onThemeChange) {
             BrowserActions(
@@ -304,6 +332,9 @@ fun BrowserRoute(
                 onExitFullscreen = viewModel::onExitFullscreen,
                 onOpenAppSettings = { openAppDetailsSettings(context) },
                 onOpenUrl = viewModel::onOpenUrl,
+                onOpenTabSwitcher = viewModel::onOpenTabSwitcher,
+                onUndoCloseTab = viewModel::onUndoCloseTab,
+                onCloseAllTabs = viewModel::onCloseAllTabs,
             )
         }
     BrowserScreen(
@@ -312,8 +343,11 @@ fun BrowserRoute(
         modifier = modifier,
         themeSettings = themeSettings,
         fullscreenContent = { FullscreenContainer(view = session?.fullscreenView) },
-        engineContent = { EngineContainer(session = session) },
+        engineContent = { EngineContainer(session = session, paused = switcherOpen) },
         homeContent = homeContent,
+        thumbnail = { id -> thumbnails?.thumbnail(id) },
+        favicon = { id -> rememberFavicon(viewModel, id, state.tabs) },
+        onSwitcherOpenChange = { switcherOpen = it },
     )
     KeepScreenOnAndImmersive(enabled = state.isFullscreen)
     EngineRequestHost(
@@ -326,6 +360,20 @@ fun BrowserRoute(
         onFileChooserUnavailable = viewModel::onFileChooserUnavailable,
         onDownloadFailed = viewModel::onDownloadFailed,
     )
+}
+
+private val NO_FAVICON: StateFlow<Bitmap?> = MutableStateFlow(null)
+
+/** Favicon hiện tại của session tab [id] (spec 009); null nếu tab không có session sống hoặc chưa có favicon. */
+@Composable
+private fun rememberFavicon(
+    viewModel: BrowserViewModel,
+    id: String,
+    tabs: List<TabItem>,
+): ImageBitmap? {
+    val flow = remember(id, tabs) { viewModel.faviconOf(id) ?: NO_FAVICON }
+    val bitmap by flow.collectAsState()
+    return remember(bitmap) { bitmap?.asImageBitmap() }
 }
 
 /**
@@ -511,21 +559,24 @@ internal fun shareIntent(
 fun EngineContainer(
     session: EngineSession?,
     modifier: Modifier = Modifier,
+    /** Spec 009: true khi trang bị che (tab switcher) → không `onResume` theo lifecycle. */
+    paused: Boolean = false,
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
+    val currentPaused by rememberUpdatedState(paused)
     if (session != null) {
         DisposableEffect(session, lifecycleOwner) {
             val lifecycle = lifecycleOwner.lifecycle
             val observer =
                 LifecycleEventObserver { _, event ->
                     when (event) {
-                        Lifecycle.Event.ON_RESUME -> session.onResume()
+                        Lifecycle.Event.ON_RESUME -> if (!currentPaused) session.onResume()
                         Lifecycle.Event.ON_PAUSE -> session.onPause()
                         else -> Unit
                     }
                 }
             // addObserver phát lại ON_RESUME nếu lifecycle đang RESUMED; nếu chưa thì đảm bảo đang pause.
-            if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) session.onPause()
+            if (currentPaused || !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) session.onPause()
             lifecycle.addObserver(observer)
             onDispose {
                 lifecycle.removeObserver(observer)

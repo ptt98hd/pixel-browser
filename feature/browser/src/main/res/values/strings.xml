@@ -41,6 +41,14 @@
     <string name="browser_tabs_title">Tabs</string>
     <string name="browser_close_tab">Close tab %1$s</string>
     <string name="browser_untitled_tab">New tab</string>
+    <string name="browser_tab_close_action">Close tab</string>
+    <string name="browser_tab_closed">Tab closed</string>
+    <string name="browser_tab_undo">Undo</string>
+    <string name="browser_tabs_close_all">Close all</string>
+    <string name="browser_close_all_title">Close all tabs?</string>
+    <string name="browser_close_all_message">All open tabs will be closed.</string>
+    <string name="browser_close_all_confirm">Close all</string>
+    <string name="browser_close_all_cancel">Cancel</string>
     <string name="browser_page_placeholder">Page content</string>
     <!-- Spec 006: intent, trình duyệt mặc định, app ngoài -->
     <string name="browser_set_default">Set as default browser</string>

@@ -35,4 +35,10 @@ data class BrowserActions(
     val onOpenAppSettings: () -> Unit = {},
     /** Mở URL web (vd. shortcut trang chủ) trong tab đang chọn (spec 010). */
     val onOpenUrl: (String) -> Unit = {},
+    /** Mở tab switcher (spec 009 AC8, AC12): ViewModel chụp thumbnail tab hiện tại. */
+    val onOpenTabSwitcher: () -> Unit = {},
+    /** Hoàn tác đóng tab gần nhất (spec 009 AC15). */
+    val onUndoCloseTab: () -> Unit = {},
+    /** Đóng tất cả tab (spec 009 AC17). */
+    val onCloseAllTabs: () -> Unit = {},
 )

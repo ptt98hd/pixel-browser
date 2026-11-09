@@ -9,6 +9,10 @@ data class TabItem(
     val id: String,
     val title: String,
     val url: String,
+    /** Tab đang ở trang chủ native (spec 009 AC13: thẻ hiển thị placeholder, tiêu đề "Tab mới"). */
+    val isHome: Boolean = false,
+    /** Tab ẩn danh (spec 009 AC8: thumbnail không ghi đĩa). */
+    val isPrivate: Boolean = false,
 )
 
 /** Trạng thái chrome trình duyệt (spec 005). [url]/[title]/... lấy trực tiếp từ session của tab được chọn. */
