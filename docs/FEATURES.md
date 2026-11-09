@@ -23,14 +23,14 @@ Trạng thái: ⬜ chưa làm · 🟨 đang làm · ✅ xong. Mỗi feature có 
 ## B. Chrome parity (M2)
 | ID | Feature | Status |
 |---|---|---|
-| B01 | Lịch sử duyệt web (tìm, xóa theo khoảng thời gian), gợi ý omnibox từ lịch sử/bookmark | ⬜ |
-| B02 | Bookmark + thư mục, import/export (HTML) | ⬜ |
+| B01 | Lịch sử duyệt web (tìm, xóa theo khoảng thời gian), gợi ý omnibox từ lịch sử/bookmark (spec 012; gợi ý bookmark: spec 013) | 🟨 |
+| B02 | Bookmark + thư mục, import/export (HTML) (spec 013) | 🟨 |
 | B03 | Downloads: parallel multi-segment, resume/pause, notification, quản lý file, cài APK an toàn | ⬜ |
-| B04 | Find in page | ⬜ |
-| B05 | Request desktop site (toàn cục + theo site) | ⬜ |
+| B04 | Find in page (spec 015) | 🟨 |
+| B05 | Request desktop site (toàn cục + theo site) (spec 015; trang cài đặt toàn cục dùng khung của spec 014) | 🟨 |
 | B06 | Incognito (cookie/cache/history tách biệt) | ⬜ |
 | B07 | Site settings: cookies, JS, popup, quyền theo site, zoom/cỡ chữ | ⬜ |
-| B08 | Search engine (Google, DuckDuckGo, Brave, Bing, tùy chỉnh) | ⬜ |
+| B08 | Search engine (Google, DuckDuckGo, Brave, Bing, tùy chỉnh) (spec 014, kèm khung Cài đặt dùng chung cho B07/B12/B14) | 🟨 |
 | B09 | Share link/page, copy link, add to home screen, print/save PDF | ⬜ |
 | B10 | Autofill (Android Autofill framework), lưu mật khẩu qua provider hệ thống | ⬜ |
 | B11 | Tab groups, đóng tab hàng loạt, khôi phục tab vừa đóng | ⬜ |
