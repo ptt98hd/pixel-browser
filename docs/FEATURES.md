@@ -62,9 +62,9 @@ Trạng thái: ⬜ chưa làm · 🟨 đang làm · ✅ xong. Mỗi feature có 
 ## E. Hạ tầng & phát hành (xuyên suốt)
 | ID | Feature | Status |
 |---|---|---|
-| E01 | Repo, CI (test/lint/build), branch → PR → auto-merge, Conventional Commits | 🟨 |
+| E01 | Repo, CI (test/lint/build), branch → PR → auto-merge, Conventional Commits | ✅ |
 | E02 | Keystore release cố định + workflow release ký APK, verify bằng apksigner, cài thử emulator | ✅ |
-| E03 | Split ABI + universal APK, versionCode theo tag | ⬜ |
+| E03 | Split ABI + universal APK, versionCode theo tag | ✅ |
 | E04 | Metadata F-Droid (fastlane, flavor fdroid không có thư viện non-free), reproducible build | ⬜ |
 | E05 | Hiệu năng (startup, memory nhiều tab), crash-safe, không telemetry; WebView lười cho tab home (không tạo WebView khi chưa có trang, spec 010); PullToRefreshInstrumentedTest + kiểm chứng predictive back/overscroll trên máy thật (spec 008) | ⬜ |
 | E06 | Docs: README, CONTRIBUTING, PRIVACY, changelog tự sinh | ⬜ |
