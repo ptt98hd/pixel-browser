@@ -29,8 +29,13 @@ object BrowserTestTags {
     const val THEME_MODE_LIGHT = "theme_mode_light"
     const val THEME_MODE_DARK = "theme_mode_dark"
     const val THEME_DYNAMIC = "theme_dynamic"
-    const val TAB_SHEET = "tab_sheet"
-    const val TAB_SHEET_NEW = "tab_sheet_new"
+    const val TAB_SWITCHER = "tab_switcher"
+    const val TAB_SWITCHER_NEW = "tab_switcher_new"
+    const val TAB_SWITCHER_CLOSE_ALL = "tab_switcher_close_all"
+    const val CLOSE_ALL_DIALOG = "close_all_dialog"
+    const val CLOSE_ALL_CONFIRM = "close_all_confirm"
+    const val CLOSE_ALL_CANCEL = "close_all_cancel"
+    const val TAB_UNDO = "tab_undo"
     const val ENGINE_CONTAINER = "engine_container"
     const val ENGINE_PLACEHOLDER = "engine_placeholder"
 
@@ -61,6 +66,14 @@ object BrowserTestTags {
     fun tabItem(id: String): String = "tab_item_$id"
 
     fun tabClose(id: String): String = "tab_close_$id"
+
+    fun tabThumb(id: String): String = "tab_thumb_$id"
+
+    fun tabThumbPlaceholder(id: String): String = "tab_thumb_placeholder_$id"
+
+    fun tabFavicon(id: String): String = "tab_favicon_$id"
+
+    fun tabFaviconFallback(id: String): String = "tab_favicon_fallback_$id"
 
     fun suggestion(index: Int): String = "suggestion_$index"
 

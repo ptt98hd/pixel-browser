@@ -40,6 +40,14 @@
     <string name="browser_tabs_title">Thẻ</string>
     <string name="browser_close_tab">Đóng thẻ %1$s</string>
     <string name="browser_untitled_tab">Thẻ mới</string>
+    <string name="browser_tab_close_action">Đóng thẻ</string>
+    <string name="browser_tab_closed">Đã đóng thẻ</string>
+    <string name="browser_tab_undo">Hoàn tác</string>
+    <string name="browser_tabs_close_all">Đóng tất cả</string>
+    <string name="browser_close_all_title">Đóng tất cả thẻ?</string>
+    <string name="browser_close_all_message">Mọi thẻ đang mở sẽ bị đóng.</string>
+    <string name="browser_close_all_confirm">Đóng tất cả</string>
+    <string name="browser_close_all_cancel">Hủy</string>
     <string name="browser_page_placeholder">Nội dung trang</string>
     <!-- Spec 006: intent, trình duyệt mặc định, app ngoài -->
     <string name="browser_set_default">Đặt làm trình duyệt mặc định</string>

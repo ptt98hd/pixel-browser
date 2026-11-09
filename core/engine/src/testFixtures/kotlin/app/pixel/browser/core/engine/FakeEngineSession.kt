@@ -1,5 +1,6 @@
 package app.pixel.browser.core.engine
 
+import android.graphics.Bitmap
 import android.view.View
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -46,6 +47,7 @@ class FakeEngineSession : EngineSession {
         cacheMode = CacheMode.Default
         sslErrorInLoad = false
         dialogGuard.onNewPage()
+        _favicon.value = null
         _state.update {
             it.copy(url = url, isLoading = true, progress = 0, error = null, securityState = SecurityState.Unknown)
         }
@@ -103,6 +105,7 @@ class FakeEngineSession : EngineSession {
     /** Như `onPageStarted` của WebView: không đổi lịch sử; securityState về Unknown trừ khi đã có lỗi SSL. */
     fun simulatePageStarted(url: String) {
         if (closed) return
+        _favicon.value = null
         val security = if (sslErrorInLoad) SecurityState.Insecure else SecurityState.Unknown
         _state.update { it.copy(url = url, isLoading = true, securityState = security) }
     }
@@ -176,6 +179,7 @@ class FakeEngineSession : EngineSession {
     override fun close() {
         if (closed) return
         closed = true
+        _favicon.value = null
         val pending = requestQueue.requests.value.map { it.id }
         requestQueue.dismissAll()
         pending.forEach { _responses[it] = EngineResponse.Dismiss() }
@@ -372,6 +376,16 @@ class FakeEngineSession : EngineSession {
 
     private fun <T : EngineRequest> enqueueSimple(build: (Long) -> T) {
         requestQueue.enqueue(build) { request, response -> request.accepts(response) }
+    }
+
+    // --- Spec 009: favicon ---
+
+    private val _favicon = MutableStateFlow<Bitmap?>(null)
+    override val favicon: StateFlow<Bitmap?> = _favicon
+
+    /** Như `onReceivedIcon`; [bitmap] null = xóa favicon. */
+    fun simulateFavicon(bitmap: Bitmap?) {
+        if (!closed) _favicon.value = bitmap
     }
 
     private companion object {

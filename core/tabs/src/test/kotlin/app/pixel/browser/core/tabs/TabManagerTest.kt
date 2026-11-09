@@ -597,4 +597,167 @@ class TabManagerTest {
         assertEquals(opener.id, m.selectedTabId.value)
         assertEquals(createdBefore, factory.created.size)
     }
+
+    // --- Spec 009 AC1: undo giữ lựa chọn ---
+
+    @Test
+    fun ac1_undoClose_ofBackgroundTab_keepsCurrentSelection() {
+        val (m, ta, others) = threeTabs()
+        val (tb, tc) = others
+        m.selectTab(tc.id)
+        m.closeTab(ta.id)
+        val restored = m.undoClose()
+        assertEquals(ta.id, restored!!.id)
+        assertEquals(listOf(ta.id, tb.id, tc.id), m.ids())
+        assertEquals(tc.id, m.selectedTabId.value)
+    }
+
+    @Test
+    fun ac1_undoClose_ofSelectedTab_selectsItAgain() {
+        val (m, ta, others) = threeTabs()
+        val (tb, tc) = others
+        m.selectTab(tc.id)
+        m.closeTab(tc.id)
+        assertEquals(tb.id, m.selectedTabId.value)
+        m.undoClose()
+        assertEquals(listOf(ta.id, tb.id, tc.id), m.ids())
+        assertEquals(tc.id, m.selectedTabId.value)
+    }
+
+    // --- Spec 009 AC2: undo sau khi đóng tab cuối ---
+
+    /** Một tab A (đã tải [a]) duy nhất. */
+    private fun singleTabA(): Pair<TabManager, Tab> {
+        val m = manager()
+        val home = m.tabs.value.single()
+        m.fake(home.id).visit(a)
+        m.refresh()
+        return m to m.tabs.value.single()
+    }
+
+    @Test
+    fun ac2_undoAfterClosingLastTab_dropsUnusedHome_andRestoresOnlyA() {
+        val (m, ta) = singleTabA()
+        m.closeTab(ta.id)
+        val h = m.tabs.value.single()
+        assertTrue(h.isHome)
+        assertNotEquals(ta.id, h.id)
+        val homeSession = m.fake(h.id)
+
+        val restored = m.undoClose()
+
+        assertEquals(ta.id, restored!!.id)
+        assertEquals(listOf(ta.id), m.ids())
+        assertEquals(ta.id, m.selectedTabId.value)
+        assertTrue(homeSession.isClosed)
+    }
+
+    @Test
+    fun ac2_droppedHomeTab_doesNotEnterUndoStack() {
+        val (m, ta) = singleTabA()
+        m.closeTab(ta.id)
+        m.undoClose()
+        assertNull(m.undoClose())
+        assertEquals(listOf(ta.id), m.ids())
+    }
+
+    @Test
+    fun ac2_usedHomeTab_isKept_whenUndoing() {
+        val (m, ta) = singleTabA()
+        m.closeTab(ta.id)
+        val h = m.tabs.value.single()
+        m.loadUrl(h.id, b)
+
+        m.undoClose()
+
+        assertEquals(listOf(ta.id, h.id), m.ids())
+        assertFalse(m.fake(h.id).isClosed)
+    }
+
+    // --- Spec 009 AC3: closeAllTabs ---
+
+    @Test
+    fun ac3_closeAllTabs_leavesSingleSelectedNewHomeTab_andClosesAllSessions() {
+        val (m, ta, others) = threeTabs()
+        val old = listOf(ta) + others
+        val sessions = old.map { m.fake(it.id) }
+
+        m.closeAllTabs()
+
+        val only = m.tabs.value.single()
+        assertTrue(only.isHome)
+        assertEquals(only.id, m.selectedTabId.value)
+        assertFalse(only.id in old.map { it.id })
+        assertTrue(sessions.all { it.isClosed })
+    }
+
+    @Test
+    fun ac3_undoAfterCloseAll_restoresLeftmostFirst_andRebuildsOriginalOrder() {
+        val (m, ta, others) = threeTabs()
+        val (tb, tc) = others
+        val old = m.ids()
+        m.closeAllTabs()
+        val homeId =
+            m.tabs.value
+                .single()
+                .id
+
+        val restoredIds = List(3) { m.undoClose()!!.id }
+
+        assertEquals(listOf(ta.id, tb.id, tc.id), restoredIds)
+        assertEquals(listOf(ta.id, tb.id, tc.id), m.ids())
+        assertFalse(homeId in m.ids())
+        assertEquals(old, m.ids())
+    }
+
+    @Test
+    fun ac3_firstUndoAfterCloseAll_dropsTheUnusedHomeTab() {
+        val (m, _, _) = threeTabs()
+        m.closeAllTabs()
+        val h = m.tabs.value.single()
+        val homeSession = m.fake(h.id)
+        m.undoClose()
+        assertTrue(homeSession.isClosed)
+        assertFalse(h.id in m.ids())
+    }
+
+    @Test
+    fun ac3_closeAllTabs_with12Tabs_restoresOnlyTheTenLeftmost_inOrder() {
+        val m = manager()
+        m
+            .fake(
+                m.tabs.value
+                    .single()
+                    .id,
+            ).visit("https://site0.example/")
+        repeat(11) { m.openTab("https://site${it + 1}.example/") }
+        val original = m.tabs.value.map { it.id }
+        assertEquals(12, original.size)
+
+        m.closeAllTabs()
+        val undone = generateSequence { m.undoClose() }.toList()
+
+        assertEquals(TabManager.MAX_UNDO, undone.size)
+        assertEquals(original.take(10), undone.map { it.id })
+        assertEquals(original.take(10), m.ids())
+    }
+
+    @Test
+    fun ac3_closeAllTabs_includesPrivateTabs() {
+        val (m, ta, _) = threeTabs()
+        val p = m.openTab(c, isPrivate = true)
+        val privateSession = m.fake(p.id)
+
+        m.closeAllTabs()
+
+        assertTrue(privateSession.isClosed)
+        assertTrue(
+            m.tabs.value
+                .single()
+                .isHome,
+        )
+        val restored = generateSequence { m.undoClose() }.toList()
+        assertTrue(restored.any { it.id == p.id && it.isPrivate })
+        assertEquals(ta.id, restored.first().id)
+    }
 }

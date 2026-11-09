@@ -58,6 +58,7 @@ class MainActivity : ComponentActivity() {
                     externalAppLauncher = AndroidExternalAppLauncher(appContext),
                     // Gate giữ application context; Activity chỉ gắn launcher xin quyền (xem onCreate).
                     runtimePermissions = AndroidRuntimePermissionGate(appContext),
+                    thumbnails = appContext.thumbnails,
                 )
             }
         }
@@ -99,6 +100,7 @@ class MainActivity : ComponentActivity() {
                     viewModel,
                     onReturnToCaller = { moveTaskToBack(true) },
                     themeSettings = settings,
+                    thumbnails = app.thumbnails,
                     onThemeChange = ::onThemeChange,
                     homeContent = {
                         HomeRoute(

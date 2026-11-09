@@ -1,5 +1,6 @@
 package app.pixel.browser.core.engine
 
+import android.graphics.Bitmap
 import android.view.View
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -89,6 +90,13 @@ abstract class EngineSessionContractTest {
 
     /** Session hợp lệ để làm đích `AttachWindow` cho loại engine đang test. */
     protected abstract fun attachTarget(): EngineSession
+
+    // --- Spec 009: favicon ---
+
+    /** Mô phỏng `onReceivedIcon(bitmap)` (WebView: `dispatchReceivedIcon`, Fake: `simulateFavicon`). */
+    protected abstract fun EngineSession.emitFavicon(bitmap: Bitmap)
+
+    private fun icon(): Bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
 
     private val url = "https://example.com/"
 
@@ -728,5 +736,56 @@ abstract class EngineSessionContractTest {
         )
         assertEquals(before, s.state.value)
         assertTrue(s.respond(1, EngineResponse.Dismiss()))
+    }
+
+    // --- Spec 009 AC4: favicon ---
+
+    @Test
+    fun ac4_favicon_isNullOnNewSession() {
+        assertNull(createSession().favicon.value)
+    }
+
+    @Test
+    fun ac4_favicon_publishesReceivedIcon() {
+        val s = createSession()
+        val bmp = icon()
+        s.emitFavicon(bmp)
+        assertSame(bmp, s.favicon.value)
+    }
+
+    @Test
+    fun ac4_favicon_resetsToNullOnLoadUrl() {
+        val s = createSession()
+        s.emitFavicon(icon())
+        s.loadUrl("https://example.org/")
+        assertNull(s.favicon.value)
+    }
+
+    @Test
+    fun ac4_favicon_resetsToNullOnPageStarted() {
+        val s = createSession()
+        s.emitFavicon(icon())
+        s.emitPageStarted("https://example.org/next")
+        assertNull(s.favicon.value)
+    }
+
+    @Test
+    fun ac4_favicon_iconAfterPageStarted_isPublishedAgain() {
+        val s = createSession()
+        s.emitFavicon(icon())
+        s.emitPageStarted("https://example.org/next")
+        val fresh = icon()
+        s.emitFavicon(fresh)
+        assertSame(fresh, s.favicon.value)
+    }
+
+    @Test
+    fun ac4_favicon_isNullAfterClose_andLaterIconsAreIgnored() {
+        val s = createSession()
+        s.emitFavicon(icon())
+        s.close()
+        assertNull(s.favicon.value)
+        s.emitFavicon(icon())
+        assertNull(s.favicon.value)
     }
 }

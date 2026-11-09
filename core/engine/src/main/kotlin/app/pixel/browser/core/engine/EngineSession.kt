@@ -1,5 +1,6 @@
 package app.pixel.browser.core.engine
 
+import android.graphics.Bitmap
 import android.view.View
 import kotlinx.coroutines.flow.StateFlow
 
@@ -87,6 +88,9 @@ interface EngineSession {
 
     /** Yêu cầu engine thoát fullscreen (spec 007 AC8). */
     fun exitFullscreen()
+
+    /** Favicon của trang hiện tại; null khi chưa có. Reset về null khi bắt đầu tải trang main-frame mới (spec 009). */
+    val favicon: StateFlow<Bitmap?>
 }
 
 fun isValidWebUrl(url: String): Boolean {
