@@ -45,4 +45,6 @@ data class BrowserActions(
     val onSelectAdjacentTab: (Int) -> Unit = {},
     /** Mở màn hình Lịch sử (spec 012). */
     val onOpenHistory: () -> Unit = {},
+    /** Mở màn hình Cài đặt (spec 014). */
+    val onOpenSettings: () -> Unit = {},
 )

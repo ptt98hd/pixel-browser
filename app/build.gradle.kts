@@ -59,6 +59,7 @@ dependencies {
     implementation(project(":feature:browser"))
     implementation(project(":feature:home"))
     implementation(project(":feature:history"))
+    implementation(project(":feature:settings"))
     implementation(project(":core:history"))
     implementation(project(":core:ui"))
     implementation(project(":core:data"))

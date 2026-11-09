@@ -52,6 +52,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsPropertyKey
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -147,6 +148,8 @@ fun HomePage(
     config: HomeConfig?,
     actions: HomeActions,
     modifier: Modifier = Modifier,
+    /** Tên search engine hiện tại cho placeholder ô tìm kiếm (spec 014); rỗng → placeholder chung. */
+    searchEngineName: String = "",
 ) {
     val background = config?.background ?: HomeBackground.Dynamic
     val contentColor =
@@ -190,7 +193,7 @@ fun HomePage(
                 }
             }
             Spacer(Modifier.height(48.dp))
-            SearchBox(contentColor, actions.onSearchClick)
+            SearchBox(contentColor, searchEngineName, actions.onSearchClick)
             Spacer(Modifier.height(32.dp))
             if (config != null) {
                 ShortcutGrid(
@@ -301,8 +304,15 @@ private fun BoxScope.ImageLayer(fileName: String) {
 @Composable
 private fun SearchBox(
     contentColor: Color,
+    searchEngineName: String,
     onClick: () -> Unit,
 ) {
+    val placeholder =
+        if (searchEngineName.isEmpty()) {
+            stringResource(R.string.home_search_placeholder)
+        } else {
+            stringResource(R.string.home_search_placeholder_engine, searchEngineName)
+        }
     Row(
         Modifier
             .widthIn(max = 560.dp)
@@ -311,15 +321,17 @@ private fun SearchBox(
             .clip(CircleShape)
             .background(contentColor.copy(alpha = 0.14f))
             .testTag(HomeTestTags.HOME_SEARCH)
-            .semantics { role = Role.Button }
-            .clickable(onClick = onClick)
+            .semantics {
+                role = Role.Button
+                contentDescription = placeholder
+            }.clickable(onClick = onClick)
             .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Icon(Icons.Filled.Search, contentDescription = null, tint = contentColor)
         Text(
-            stringResource(R.string.home_search_placeholder),
+            placeholder,
             color = contentColor.copy(alpha = 0.8f),
             style = MaterialTheme.typography.bodyLarge,
         )
@@ -332,6 +344,7 @@ fun HomeRoute(
     viewModel: HomeViewModel,
     onOpenUrl: (String) -> Unit,
     onSearchClick: () -> Unit,
+    searchEngineName: String = "",
 ) {
     val config by viewModel.config.collectAsState()
     val actions =
@@ -358,7 +371,7 @@ fun HomeRoute(
         }
     }
     Box(Modifier.fillMaxSize()) {
-        HomePage(config, actions, Modifier.fillMaxSize())
+        HomePage(config, actions, Modifier.fillMaxSize(), searchEngineName = searchEngineName)
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
 }

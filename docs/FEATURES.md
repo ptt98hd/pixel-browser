@@ -30,13 +30,13 @@ Trạng thái: ⬜ chưa làm · 🟨 đang làm · ✅ xong. Mỗi feature có 
 | B05 | Request desktop site (toàn cục + theo site) (spec 015; trang cài đặt toàn cục dùng khung của spec 014) | 🟨 |
 | B06 | Incognito (cookie/cache/history tách biệt) | ⬜ |
 | B07 | Site settings: cookies, JS, popup, quyền theo site, zoom/cỡ chữ | ⬜ |
-| B08 | Search engine (Google, DuckDuckGo, Brave, Bing, tùy chỉnh) (spec 014, kèm khung Cài đặt dùng chung cho B07/B12/B14) | 🟨 |
+| B08 | Search engine (Google, DuckDuckGo, Brave, Bing, tùy chỉnh) (spec 014, kèm khung Cài đặt dùng chung cho B07/B12/B14) | ✅ |
 | B09 | Share link/page, copy link, add to home screen, print/save PDF | ⬜ |
 | B10 | Autofill (Android Autofill framework), lưu mật khẩu qua provider hệ thống | ⬜ |
 | B11 | Tab groups, đóng tab hàng loạt, khôi phục tab vừa đóng | ⬜ |
 | B12 | Clear browsing data, Safe Browsing, HTTPS-first, cảnh báo chứng chỉ | ⬜ |
 | B13 | Long-press link/ảnh menu (mở tab mới, tải ảnh, copy, share) | ⬜ |
-| B14 | Cài đặt tổng, đa ngôn ngữ (vi/en), accessibility (cỡ chữ, TalkBack) | ⬜ |
+| B14 | Cài đặt tổng, đa ngôn ngữ (vi/en), accessibility (cỡ chữ, TalkBack) (khung Cài đặt + trang Giao diện/Giới thiệu đã có ở spec 014; còn cỡ chữ, ngôn ngữ, accessibility) | 🟨 |
 | B15 | Text selection actions, view source, reader-friendly zoom | ⬜ |
 
 ## C. Nâng cao I (M3)

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="home_search_placeholder">Tìm kiếm hoặc nhập URL</string>
+    <string name="home_search_placeholder_engine">Tìm kiếm với %1$s</string>
     <string name="home_add_shortcut">Thêm lối tắt</string>
     <string name="home_customize">Tùy chỉnh trang chủ</string>
     <string name="home_menu_edit">Sửa</string>

@@ -23,7 +23,7 @@ android {
 dependencies {
     api(libs.kotlinx.coroutines.core)
     api(libs.androidx.datastore.preferences)
-    implementation(project(":core:omnibox"))
+    api(project(":core:omnibox"))
 
     testImplementation(testFixtures(project(":core:data")))
     testImplementation(libs.junit)

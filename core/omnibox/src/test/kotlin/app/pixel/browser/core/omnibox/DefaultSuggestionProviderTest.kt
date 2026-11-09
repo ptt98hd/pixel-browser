@@ -41,4 +41,61 @@ class DefaultSuggestionProviderTest {
         runTest {
             assertEquals(emptyList<Suggestion>(), provider.suggest("javascript:alert(1)"))
         }
+
+    // --- Spec 014 AC9: engine động ---
+
+    @Test
+    fun ac9_dynamicEngine_isReadOnEverySuggestCall() =
+        runTest {
+            var current = SearchEngines.Google
+            val dynamic = DefaultSuggestionProvider { current }
+
+            assertEquals(
+                listOf(
+                    Suggestion(
+                        SuggestionKind.Search,
+                        "Search for hello world",
+                        "https://www.google.com/search?q=hello%20world",
+                    ),
+                ),
+                dynamic.suggest("hello world"),
+            )
+
+            current = SearchEngines.DuckDuckGo
+            assertEquals(
+                listOf(
+                    Suggestion(
+                        SuggestionKind.Search,
+                        "Search for hello world",
+                        "https://duckduckgo.com/?q=hello%20world",
+                    ),
+                ),
+                dynamic.suggest("hello world"),
+            )
+        }
+
+    @Test
+    fun ac9_dynamicEngine_appliesToGoToPlusSearchSuggestions() =
+        runTest {
+            var current = SearchEngines.Google
+            val dynamic = DefaultSuggestionProvider { current }
+            current = SearchEngines.Bing
+            assertEquals(
+                listOf(
+                    SuggestionKind.GoTo to "https://example.com",
+                    SuggestionKind.Search to "https://www.bing.com/search?q=example.com",
+                ),
+                dynamic.suggest("example.com").map { it.kind to it.url },
+            )
+        }
+
+    @Test
+    fun ac9_legacyConstructor_withEngineInstance_behavesAsBefore() =
+        runTest {
+            val legacy = DefaultSuggestionProvider(SearchEngines.Brave)
+            assertEquals(
+                listOf(SuggestionKind.Search to "https://search.brave.com/search?q=kotlin"),
+                legacy.suggest("kotlin").map { it.kind to it.url },
+            )
+        }
 }

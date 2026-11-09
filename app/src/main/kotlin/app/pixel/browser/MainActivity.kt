@@ -14,6 +14,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -41,6 +42,8 @@ import app.pixel.browser.feature.history.HistoryViewModel
 import app.pixel.browser.feature.home.AndroidBackgroundImageImporter
 import app.pixel.browser.feature.home.HomeRoute
 import app.pixel.browser.feature.home.HomeViewModel
+import app.pixel.browser.feature.settings.AppInfo
+import app.pixel.browser.feature.settings.SettingsRoute
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -68,6 +71,7 @@ class MainActivity : ComponentActivity() {
                     // Gate giữ application context; Activity chỉ gắn launcher xin quyền (xem onCreate).
                     runtimePermissions = AndroidRuntimePermissionGate(appContext),
                     thumbnails = appContext.thumbnails,
+                    searchEngines = appContext.searchEngine,
                     suggestionProvider = appContext.suggestionProvider,
                     pageVisits = appContext.historyRecorder,
                 )
@@ -133,15 +137,18 @@ class MainActivity : ComponentActivity() {
                         },
                     overlayOpen = destination != AppDestination.Browser,
                     onOpenHistory = { destination = AppDestination.History },
+                    onOpenSettings = { destination = AppDestination.Settings },
                     onReturnToCaller = { moveTaskToBack(true) },
                     themeSettings = settings,
                     thumbnails = app.thumbnails,
                     onThemeChange = ::onThemeChange,
                     homeContent = {
+                        val engine by app.searchEngine.collectAsState()
                         HomeRoute(
                             homeViewModel,
                             onOpenUrl = viewModel::onOpenUrl,
                             onSearchClick = viewModel::onStartEditing,
+                            searchEngineName = engine.name,
                         )
                     },
                 )
@@ -157,6 +164,18 @@ class MainActivity : ComponentActivity() {
                             viewModel.onOpenUrlInNewTab(it)
                         },
                         onClose = { destination = AppDestination.Browser },
+                    )
+                }
+                if (destination == AppDestination.Settings) {
+                    val registry = remember { settingsRegistry(app, appInfo()) }
+                    SettingsRoute(
+                        registry,
+                        onClose = { destination = AppDestination.Browser },
+                        // Mở liên kết (mã nguồn, giấy phép) trong tab mới và đóng Cài đặt.
+                        onOpenUrl = {
+                            destination = AppDestination.Browser
+                            viewModel.onOpenUrlInNewTab(it)
+                        },
                     )
                 }
             }
@@ -178,6 +197,12 @@ class MainActivity : ComponentActivity() {
         viewModel.onIncomingIntent(request)
     }
 
+    /** Phiên bản và liên kết mã nguồn cho trang Giới thiệu (spec 014 AC16). */
+    private fun appInfo(): AppInfo {
+        val info = packageManager.getPackageInfo(packageName, 0)
+        return AppInfo(info.versionName.orEmpty(), info.longVersionCode, SOURCE_URL)
+    }
+
     /** Đổi Sáng/Tối gây configuration change → Activity tạo lại; WebView nằm trong ViewModel nên giữ trang. */
     private fun onThemeChange(next: ThemeSettings) = app.updateTheme { next }
 
@@ -196,6 +221,10 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         (viewModel.runtimePermissions as? AndroidRuntimePermissionGate)?.detach(permissionLauncher)
         super.onDestroy()
+    }
+
+    private companion object {
+        const val SOURCE_URL = "https://github.com/ptt98hd/pixel-browser"
     }
 
     override fun onStop() {

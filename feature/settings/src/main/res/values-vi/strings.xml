@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_title">Cài đặt</string>
+    <string name="settings_back">Quay lại</string>
+    <string name="settings_section_search">Tìm kiếm</string>
+    <string name="settings_section_appearance">Giao diện</string>
+    <string name="settings_section_privacy">Quyền riêng tư và bảo mật</string>
+    <string name="settings_section_site">Trang web</string>
+    <string name="settings_section_about">Giới thiệu</string>
+    <string name="settings_coming_soon">Sắp có</string>
+    <string name="settings_page_search_engine">Công cụ tìm kiếm</string>
+    <string name="settings_page_theme">Giao diện</string>
+    <string name="settings_page_about">Giới thiệu Pixel Browser</string>
+    <string name="settings_page_clear_data">Xóa dữ liệu duyệt web</string>
+    <string name="settings_page_safe_browsing">Duyệt web an toàn</string>
+    <string name="settings_page_site_settings">Cài đặt trang web</string>
+    <string name="settings_page_desktop_site">Trang web cho máy tính</string>
+    <string name="search_engine_custom">Tùy chỉnh</string>
+    <string name="search_engine_custom_hint">Dùng địa chỉ tìm kiếm của riêng bạn</string>
+    <string name="search_custom_name_label">Tên</string>
+    <string name="search_custom_template_label">Địa chỉ tìm kiếm</string>
+    <string name="search_custom_template_help">Đặt %1$s vào chỗ từ khóa tìm kiếm.</string>
+    <string name="search_custom_preview">Xem trước: %1$s</string>
+    <string name="search_custom_cancel">Hủy</string>
+    <string name="search_custom_save">Lưu</string>
+    <string name="search_custom_http_warning">Địa chỉ này không được mã hóa. Người dùng chung mạng có thể thấy nội dung bạn tìm kiếm.</string>
+    <string name="search_error_name_empty">Hãy nhập tên.</string>
+    <string name="search_error_name_too_long">Tên quá dài. Độ dài tối đa: %1$d</string>
+    <string name="search_error_template_empty">Hãy nhập địa chỉ tìm kiếm.</string>
+    <string name="search_error_no_placeholder">Địa chỉ phải chứa %1$s ở chỗ từ khóa tìm kiếm.</string>
+    <string name="search_error_multiple_placeholders">Địa chỉ chỉ được chứa %1$s một lần.</string>
+    <string name="search_error_invalid_url">Hãy nhập địa chỉ http hoặc https hợp lệ, có %1$s trong đường dẫn hoặc truy vấn, không nằm ở tên miền.</string>
+    <string name="search_error_template_too_long">Địa chỉ quá dài. Độ dài tối đa: %1$d</string>
+    <string name="appearance_mode_system">Theo hệ thống</string>
+    <string name="appearance_mode_light">Sáng</string>
+    <string name="appearance_mode_dark">Tối</string>
+    <string name="appearance_dynamic">Màu động</string>
+    <string name="appearance_dynamic_summary">Dùng màu từ hình nền</string>
+    <string name="about_version">Phiên bản %1$s (%2$d)</string>
+    <string name="about_license">Giấy phép: %1$s</string>
+    <string name="about_source">Mã nguồn</string>
+    <string name="about_libraries_title">Thư viện mã nguồn mở</string>
+</resources>

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="home_search_placeholder">Search or type URL</string>
+    <string name="home_search_placeholder_engine">Search with %1$s</string>
     <string name="home_add_shortcut">Add shortcut</string>
     <string name="home_customize">Customize home page</string>
     <string name="home_menu_edit">Edit</string>

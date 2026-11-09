@@ -82,8 +82,8 @@ object BrowserMessages {
  */
 class BrowserViewModel(
     private val tabManager: TabManager,
-    val searchEngine: SearchEngine = SearchEngines.Default,
-    private val suggestionProvider: SuggestionProvider = DefaultSuggestionProvider(searchEngine),
+    private val searchEngines: StateFlow<SearchEngine> = MutableStateFlow(SearchEngines.Default),
+    private val suggestionProvider: SuggestionProvider = DefaultSuggestionProvider { searchEngines.value },
     private val externalAppLauncher: ExternalAppLauncher = ExternalAppLauncher { ExternalLaunchResult.Rejected },
     /** Đồng hồ đơn điệu (ms) cho throttle mở app ngoài. */
     private val clock: () -> Long = { System.nanoTime() / NANOS_PER_MILLI },
@@ -96,6 +96,9 @@ class BrowserViewModel(
     /** Ghi lịch sử khi trang tải xong (spec 012). */
     private val pageVisits: PageVisitRecorder = PageVisitRecorder.None,
 ) : ViewModel() {
+    /** Engine hiện tại (đọc mỗi lần dùng: onSubmit, intent, gợi ý). */
+    val searchEngine: SearchEngine get() = searchEngines.value
+
     private val _uiState = MutableStateFlow(BrowserUiState())
     val uiState: StateFlow<BrowserUiState> = _uiState.asStateFlow()
 
