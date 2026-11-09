@@ -46,4 +46,9 @@ data class BrowserUiState(
     val isFullscreen: Boolean = false,
     /** Tab đang chọn hiển thị trang chủ native thay cho engine (spec 010). */
     val isHome: Boolean = false,
+    /** Có thể lưu dấu trang: URL là `isValidWebUrl`, không ở home, có kho dấu trang (spec 013). */
+    val canBookmark: Boolean = false,
+    /** Trang hiện tại đã có dấu trang (so theo `urlKey`). */
+    val isBookmarked: Boolean = false,
+    val bookmarkId: Long? = null,
 )

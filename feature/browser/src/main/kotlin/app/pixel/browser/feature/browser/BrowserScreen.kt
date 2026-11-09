@@ -26,9 +26,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.systemGestures
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.SnackbarVisuals
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -164,13 +169,28 @@ fun BrowserScreen(
     val scope = rememberCoroutineScope()
     val messageText = state.message?.let { messageText(it) }
     val settingsLabel = stringResource(R.string.browser_message_permission_settings)
+    val editLabel = stringResource(R.string.browser_bookmark_edit_action)
+    val undoLabel = stringResource(R.string.browser_tab_undo)
     LaunchedEffect(state.message) {
         if (messageText != null) {
-            val withSettings = state.message == BrowserMessages.PERMISSION_DENIED
+            val message = state.message
+            val bookmarkId = state.bookmarkId
+            val action =
+                when (message) {
+                    BrowserMessages.PERMISSION_DENIED -> settingsLabel
+                    BrowserMessages.BOOKMARK_ADDED -> editLabel
+                    BrowserMessages.BOOKMARK_REMOVED -> undoLabel
+                    else -> null
+                }
             scope.launch {
-                val result =
-                    snackbarHostState.showSnackbar(messageText, actionLabel = settingsLabel.takeIf { withSettings })
-                if (result == SnackbarResult.ActionPerformed) actions.onOpenAppSettings()
+                val visuals = MessageVisuals(messageText, action, message == BrowserMessages.BOOKMARK_ADDED)
+                if (snackbarHostState.showSnackbar(visuals) == SnackbarResult.ActionPerformed) {
+                    when (message) {
+                        BrowserMessages.BOOKMARK_ADDED -> bookmarkId?.let(actions.onEditBookmark)
+                        BrowserMessages.BOOKMARK_REMOVED -> actions.onUndoBookmarkRemoved()
+                        else -> actions.onOpenAppSettings()
+                    }
+                }
             }
             actions.onMessageShown()
         }
@@ -197,7 +217,20 @@ fun BrowserScreen(
                     if (state.isHome) homeContent() else engineContent()
                 }
                 // Snackbar ngay trên bottom bar (đáy vùng nội dung).
-                SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
+                SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter)) { data ->
+                    val tag = if ((data.visuals as? MessageVisuals)?.editAction == true) BOOKMARK_EDIT_TAG else null
+                    Snackbar(
+                        action =
+                            data.visuals.actionLabel?.let { label ->
+                                {
+                                    TextButton(
+                                        onClick = { data.performAction() },
+                                        modifier = if (tag != null) Modifier.testTag(tag) else Modifier,
+                                    ) { Text(label) }
+                                }
+                            },
+                    ) { Text(data.visuals.message) }
+                }
             }
             if (!state.isFullscreen) {
                 ChromeBottom(
@@ -293,6 +326,16 @@ private fun ChromeBottom(
                     onMenuOpenChange(false)
                     onThemeClick()
                 },
+                canBookmark = state.canBookmark,
+                isBookmarked = state.isBookmarked,
+                onToggleBookmark = {
+                    onMenuOpenChange(false)
+                    actions.onToggleBookmark()
+                },
+                onBookmarks = {
+                    onMenuOpenChange(false)
+                    actions.onOpenBookmarks()
+                },
                 onHistory = {
                     onMenuOpenChange(false)
                     actions.onOpenHistory()
@@ -304,6 +347,19 @@ private fun ChromeBottom(
             )
         }
     }
+}
+
+private const val BOOKMARK_EDIT_TAG = BrowserTestTags.BOOKMARK_EDIT_ACTION
+
+/** Nội dung snackbar; [editAction] đánh dấu nút "Sửa" của thông báo đã thêm dấu trang (để test/a11y tìm). */
+private class MessageVisuals(
+    override val message: String,
+    override val actionLabel: String?,
+    val editAction: Boolean,
+) : SnackbarVisuals {
+    override val withDismissAction: Boolean = false
+    override val duration: SnackbarDuration =
+        if (actionLabel == null) SnackbarDuration.Short else SnackbarDuration.Long
 }
 
 @Composable
@@ -319,6 +375,9 @@ private fun messageText(code: String): String =
         BrowserMessages.DOWNLOAD_UNSUPPORTED -> stringResource(R.string.browser_message_download_unsupported)
         BrowserMessages.DOWNLOAD_FAILED -> stringResource(R.string.browser_message_download_failed)
         BrowserMessages.FILE_CHOOSER_UNAVAILABLE -> stringResource(R.string.browser_message_file_chooser_unavailable)
+        BrowserMessages.BOOKMARK_ADDED -> stringResource(R.string.browser_message_bookmark_added)
+        BrowserMessages.BOOKMARK_FAILED -> stringResource(R.string.browser_message_bookmark_failed)
+        BrowserMessages.BOOKMARK_REMOVED -> stringResource(R.string.browser_message_bookmark_removed)
         else -> code
     }
 
@@ -349,8 +408,14 @@ fun BrowserRoute(
     onOpenHistory: () -> Unit = {},
     /** Spec 014: `:app` mở lớp phủ Cài đặt. */
     onOpenSettings: () -> Unit = {},
+    /** Spec 013: `:app` mở lớp phủ Dấu trang. */
+    onOpenBookmarks: () -> Unit = {},
+    /** Spec 013: `:app` mở hộp thoại sửa dấu trang [id] (menu "Sửa dấu trang" hoặc snackbar). */
+    onEditBookmark: (Long) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
+    val currentEditBookmark by rememberUpdatedState(onEditBookmark)
+    LaunchedEffect(viewModel) { viewModel.bookmarkEditRequests.collect { currentEditBookmark(it) } }
     val session by viewModel.selectedSession.collectAsState()
     val context = LocalContext.current
     val shareTitle = stringResource(R.string.browser_share)
@@ -377,7 +442,16 @@ fun BrowserRoute(
     val pullEnabled =
         GestureGate.of(state, overlayOpen = covered, systemGestureNav = false).pullToRefresh
     val actions =
-        remember(viewModel, context, shareTitle, setDefault, onThemeChange, onOpenHistory, onOpenSettings) {
+        remember(
+            viewModel,
+            context,
+            shareTitle,
+            setDefault,
+            onThemeChange,
+            onOpenHistory,
+            onOpenSettings,
+            onOpenBookmarks,
+        ) {
             BrowserActions(
                 onBack = viewModel::onBack,
                 onForward = viewModel::onForward,
@@ -421,6 +495,10 @@ fun BrowserRoute(
                 onSelectAdjacentTab = viewModel::onSelectAdjacentTab,
                 onOpenHistory = onOpenHistory,
                 onOpenSettings = onOpenSettings,
+                onOpenBookmarks = onOpenBookmarks,
+                onToggleBookmark = viewModel::onToggleBookmark,
+                onEditBookmark = { currentEditBookmark(it) },
+                onUndoBookmarkRemoved = viewModel::onUndoBookmarkRemoved,
             )
         }
     BrowserScreen(

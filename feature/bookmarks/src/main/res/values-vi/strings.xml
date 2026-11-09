@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Screen -->
+    <string name="bookmarks_close">Đóng dấu trang</string>
+    <string name="bookmarks_up">Lên thư mục cha</string>
+    <string name="bookmarks_search">Tìm dấu trang</string>
+    <string name="bookmarks_search_hint">Tìm dấu trang</string>
+    <string name="bookmarks_search_close">Đóng tìm kiếm</string>
+    <string name="bookmarks_new_folder">Thư mục mới</string>
+    <string name="bookmarks_import">Nhập dấu trang</string>
+    <string name="bookmarks_export">Xuất dấu trang</string>
+    <string name="bookmarks_empty_folder">Chưa có dấu trang nào ở đây</string>
+    <string name="bookmarks_empty_search">Không có dấu trang nào khớp</string>
+    <plurals name="bookmarks_folder_items">
+        <item quantity="other">%1$d mục</item>
+    </plurals>
+    <string name="bookmarks_item_more_actions">Thêm thao tác</string>
+    <string name="bookmarks_copied">Đã sao chép liên kết</string>
+
+    <!-- Item menu -->
+    <string name="bookmarks_menu_edit">Sửa</string>
+    <string name="bookmarks_menu_open_new_tab">Mở trong tab mới</string>
+    <string name="bookmarks_menu_copy">Sao chép liên kết</string>
+    <string name="bookmarks_menu_move">Di chuyển tới…</string>
+    <string name="bookmarks_menu_delete">Xóa</string>
+    <string name="bookmarks_menu_rename">Đổi tên</string>
+
+    <!-- Folder and move dialogs -->
+    <string name="bookmarks_folder_new_title">Thư mục mới</string>
+    <string name="bookmarks_folder_rename_title">Đổi tên thư mục</string>
+    <string name="bookmarks_folder_name_label">Tên thư mục</string>
+    <string name="bookmarks_folder_name_empty">Hãy nhập tên</string>
+    <string name="bookmarks_dialog_ok">OK</string>
+    <string name="bookmarks_dialog_cancel">Hủy</string>
+    <string name="bookmarks_move_title">Di chuyển tới</string>
+
+    <!-- Undo and messages -->
+    <string name="bookmarks_deleted">Đã xóa</string>
+    <string name="bookmarks_undo">Hoàn tác</string>
+    <plurals name="bookmarks_import_result">
+        <item quantity="other">Đã nhập %1$d dấu trang, bỏ qua %2$d</item>
+    </plurals>
+    <string name="bookmarks_import_too_large">Tệp này quá lớn để nhập</string>
+    <string name="bookmarks_import_unreadable">Không đọc được tệp này</string>
+    <string name="bookmarks_import_not_bookmarks">Tệp này không chứa dấu trang</string>
+    <string name="bookmarks_import_full">Không đủ chỗ cho các dấu trang này</string>
+    <plurals name="bookmarks_export_done">
+        <item quantity="other">Đã xuất %1$d dấu trang</item>
+    </plurals>
+    <string name="bookmarks_export_failed">Không lưu được tệp</string>
+    <string name="bookmarks_operation_failed">Đã xảy ra lỗi</string>
+
+    <!-- Edit bookmark dialog -->
+    <string name="bookmark_edit_title">Sửa dấu trang</string>
+    <string name="bookmark_title_label">Tên</string>
+    <string name="bookmark_url_label">Địa chỉ</string>
+    <string name="bookmark_folder_label">Thư mục</string>
+    <string name="bookmark_save">Lưu</string>
+    <string name="bookmark_remove">Xóa</string>
+    <string name="bookmark_cancel">Hủy</string>
+    <string name="bookmark_error_invalid_url">Hãy nhập địa chỉ web hợp lệ (http hoặc https)</string>
+    <string name="bookmark_error_invalid_title">Hãy nhập tên</string>
+    <string name="bookmark_error_not_found">Dấu trang hoặc thư mục này không còn tồn tại</string>
+</resources>

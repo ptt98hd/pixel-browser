@@ -2,4 +2,7 @@
 <resources>
     <string name="app_name">Pixel Browser</string>
     <string name="process_text_label">Search with Pixel</string>
+    <!-- Spec 013: tên gốc dấu trang và tiền tố thư mục nhập (kho lưu tên cố định) -->
+    <string name="bookmarks_root_title">Bookmarks</string>
+    <string name="bookmarks_import_folder_prefix">Imported</string>
 </resources>

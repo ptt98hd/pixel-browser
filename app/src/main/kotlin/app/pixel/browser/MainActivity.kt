@@ -13,12 +13,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.core.view.WindowCompat
@@ -30,6 +32,10 @@ import app.pixel.browser.core.history.HistoryClearer
 import app.pixel.browser.core.tabs.TabManager
 import app.pixel.browser.core.ui.PixelTheme
 import app.pixel.browser.core.ui.resolveDarkTheme
+import app.pixel.browser.feature.bookmarks.BookmarkEditRoute
+import app.pixel.browser.feature.bookmarks.BookmarksRoute
+import app.pixel.browser.feature.bookmarks.BookmarksViewModel
+import app.pixel.browser.feature.bookmarks.ContentResolverBookmarkFile
 import app.pixel.browser.feature.browser.BrowserRoute
 import app.pixel.browser.feature.browser.BrowserViewModel
 import app.pixel.browser.feature.browser.intent.AndroidExternalAppLauncher
@@ -74,6 +80,7 @@ class MainActivity : ComponentActivity() {
                     searchEngines = appContext.searchEngine,
                     suggestionProvider = appContext.suggestionProvider,
                     pageVisits = appContext.historyRecorder,
+                    bookmarks = appContext.bookmarkRepository,
                 )
             }
         }
@@ -114,6 +121,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Màn hình Dấu trang (lớp phủ); ViewModel cấp Activity nên giữ thư mục đang xem khi xoay (spec 013). */
+    private val bookmarksViewModel: BookmarksViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                val appContext = app
+                BookmarksViewModel(
+                    appContext.bookmarkRepository,
+                    ContentResolverBookmarkFile(appContext.contentResolver),
+                    ioDispatcher = Dispatchers.IO,
+                    rootTitle = appContext.getString(R.string.bookmarks_root_title),
+                    importFolderPrefix = appContext.getString(R.string.bookmarks_import_folder_prefix),
+                )
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -126,11 +149,13 @@ class MainActivity : ComponentActivity() {
                 SystemBarsEffect(dark = resolveDarkTheme(settings.mode, isSystemInDarkTheme()))
                 // Điều hướng cấp app: màn hình phụ là lớp phủ trên BrowserRoute (spec 012), sống qua xoay màn hình.
                 var destination by rememberSaveable { mutableStateOf(AppDestination.Browser) }
+                // Hộp thoại sửa dấu trang mở từ snackbar/menu của trình duyệt (id < 0: đang đóng).
+                var editingBookmark by rememberSaveable { mutableLongStateOf(NO_BOOKMARK) }
                 BrowserRoute(
                     viewModel,
                     // Nội dung dưới lớp phủ không được TalkBack đọc/focus.
                     modifier =
-                        if (destination != AppDestination.Browser) {
+                        if (destination != AppDestination.Browser || editingBookmark != NO_BOOKMARK) {
                             Modifier.semantics { hideFromAccessibility() }
                         } else {
                             Modifier
@@ -138,6 +163,8 @@ class MainActivity : ComponentActivity() {
                     overlayOpen = destination != AppDestination.Browser,
                     onOpenHistory = { destination = AppDestination.History },
                     onOpenSettings = { destination = AppDestination.Settings },
+                    onOpenBookmarks = { destination = AppDestination.Bookmarks },
+                    onEditBookmark = { editingBookmark = it },
                     onReturnToCaller = { moveTaskToBack(true) },
                     themeSettings = settings,
                     thumbnails = app.thumbnails,
@@ -164,6 +191,29 @@ class MainActivity : ComponentActivity() {
                             viewModel.onOpenUrlInNewTab(it)
                         },
                         onClose = { destination = AppDestination.Browser },
+                    )
+                }
+                if (destination == AppDestination.Bookmarks) {
+                    BookmarksRoute(
+                        bookmarksViewModel,
+                        onOpenUrl = {
+                            destination = AppDestination.Browser
+                            viewModel.onOpenUrl(it)
+                        },
+                        onOpenInNewTab = {
+                            destination = AppDestination.Browser
+                            viewModel.onOpenUrlInNewTab(it)
+                        },
+                        onClose = { destination = AppDestination.Browser },
+                    )
+                }
+                if (editingBookmark != NO_BOOKMARK) {
+                    BookmarkEditRoute(
+                        app.bookmarkRepository,
+                        editingBookmark,
+                        onDismiss = { editingBookmark = NO_BOOKMARK },
+                        onRemoved = viewModel::onBookmarkRemoved,
+                        rootTitle = stringResource(R.string.bookmarks_root_title),
                     )
                 }
                 if (destination == AppDestination.Settings) {
@@ -224,6 +274,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private companion object {
+        const val NO_BOOKMARK = -1L
         const val SOURCE_URL = "https://github.com/ptt98hd/pixel-browser"
     }
 
