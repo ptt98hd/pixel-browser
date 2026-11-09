@@ -12,6 +12,9 @@ import app.pixel.browser.core.data.createSettingsDataStore
 import app.pixel.browser.core.data.home.FileHomeConfigStore
 import app.pixel.browser.core.data.home.HomeConfigStore
 import app.pixel.browser.core.data.home.HomeFiles
+import app.pixel.browser.core.data.search.DataStoreSearchSettingsStore
+import app.pixel.browser.core.data.search.SearchSettings
+import app.pixel.browser.core.data.search.SearchSettingsStore
 import app.pixel.browser.core.history.HistoryRecorder
 import app.pixel.browser.core.history.HistoryRetention
 import app.pixel.browser.core.history.HistoryStore
@@ -20,6 +23,7 @@ import app.pixel.browser.core.history.PageVisitRecorder
 import app.pixel.browser.core.history.RoomHistoryStore
 import app.pixel.browser.core.history.createHistoryDatabase
 import app.pixel.browser.core.omnibox.DefaultSuggestionProvider
+import app.pixel.browser.core.omnibox.SearchEngine
 import app.pixel.browser.core.omnibox.SearchEngines
 import app.pixel.browser.core.omnibox.SuggestionAggregator
 import app.pixel.browser.core.omnibox.SuggestionProvider
@@ -101,7 +105,7 @@ class PixelBrowserApplication : Application() {
         get() =
             SuggestionAggregator(
                 listOf(
-                    DefaultSuggestionProvider(SearchEngines.Default),
+                    DefaultSuggestionProvider { searchEngine.value },
                     HistorySuggestionProvider(historyStore, System::currentTimeMillis),
                 ),
             )
@@ -120,6 +124,43 @@ class PixelBrowserApplication : Application() {
     /** Cài đặt theme hiện tại: bắt đầu `ThemeSettings()`, cập nhật từ [themeStore] (spec 011 AC14). */
     val themeSettings: StateFlow<ThemeSettings> = _themeSettings.asStateFlow()
 
+    private val _searchEngine = MutableStateFlow(SearchEngines.Default)
+    private val search = OptimisticSetting(SearchSettings()) { _searchEngine.value = it.engine }
+
+    @Volatile private var searchStoreRef: SearchSettingsStore? = null
+
+    /** Cài đặt công cụ tìm kiếm hiện tại: bắt đầu `SearchSettings()`, cập nhật từ [searchStore] (spec 014 AC17). */
+    val searchSettings: StateFlow<SearchSettings> get() = search.state
+
+    /** Engine hiệu lực (map từ [searchSettings]); đọc `.value` mỗi lần dùng. */
+    val searchEngine: StateFlow<SearchEngine> = _searchEngine.asStateFlow()
+
+    /** Store cài đặt tìm kiếm đang dùng (DataStore `settings`, spec 014). */
+    val searchStore: SearchSettingsStore
+        get() = checkNotNull(searchStoreRef) { "bindSearchStore chưa được gọi" }
+
+    /** Đổi cài đặt tìm kiếm lạc quan (cùng mẫu [updateTheme]); `IOException` khi ghi chỉ được log. */
+    @MainThread
+    fun updateSearch(transform: (SearchSettings) -> SearchSettings) {
+        val store = searchStore
+        search.update(
+            ioScope,
+            transform,
+            write = { next -> store.update { next } },
+            onWriteFailure = { Log.w(TAG, "Không ghi được cài đặt tìm kiếm", it) },
+        )
+    }
+
+    /** Gắn [store] làm [searchStore] và collect vào [searchSettings] trên [scope] (cùng mẫu [bindThemeStore]). */
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    fun bindSearchStore(
+        store: SearchSettingsStore,
+        scope: CoroutineScope,
+    ) {
+        searchStoreRef = store
+        search.bind(scope, store.settings)
+    }
+
     /** Áp night mode khi người dùng đổi Sáng/Tối (spec 011 AC12). Test thay bằng bản ghi lại. */
     lateinit var nightModeController: NightModeController
 
@@ -133,6 +174,7 @@ class PixelBrowserApplication : Application() {
                 preferencesDataStoreFile(SETTINGS_DATASTORE)
             }
         bindThemeStore(DataStoreThemeSettingsStore(settingsDataStore), ioScope)
+        bindSearchStore(DataStoreSearchSettingsStore(settingsDataStore), ioScope)
     }
 
     /** Spec 009: `TRIM_MEMORY_BACKGROUND` trở lên xóa cache thumbnail trong bộ nhớ (đĩa giữ). */

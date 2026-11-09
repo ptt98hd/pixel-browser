@@ -25,6 +25,7 @@ object BrowserTestTags {
     const val EXTERNAL_CANCEL = "external_cancel"
     const val MENU_THEME = "menu_theme"
     const val MENU_HISTORY = "menu_history"
+    const val MENU_SETTINGS = "menu_settings"
     const val THEME_DIALOG = "theme_dialog"
     const val THEME_MODE_SYSTEM = "theme_mode_system"
     const val THEME_MODE_LIGHT = "theme_mode_light"

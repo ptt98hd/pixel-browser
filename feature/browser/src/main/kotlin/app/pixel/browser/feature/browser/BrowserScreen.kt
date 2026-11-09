@@ -297,6 +297,10 @@ private fun ChromeBottom(
                     onMenuOpenChange(false)
                     actions.onOpenHistory()
                 },
+                onSettings = {
+                    onMenuOpenChange(false)
+                    actions.onOpenSettings()
+                },
             )
         }
     }
@@ -343,6 +347,8 @@ fun BrowserRoute(
     overlayOpen: Boolean = false,
     /** Spec 012: `:app` mở lớp phủ Lịch sử. */
     onOpenHistory: () -> Unit = {},
+    /** Spec 014: `:app` mở lớp phủ Cài đặt. */
+    onOpenSettings: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
     val session by viewModel.selectedSession.collectAsState()
@@ -371,7 +377,7 @@ fun BrowserRoute(
     val pullEnabled =
         GestureGate.of(state, overlayOpen = covered, systemGestureNav = false).pullToRefresh
     val actions =
-        remember(viewModel, context, shareTitle, setDefault, onThemeChange, onOpenHistory) {
+        remember(viewModel, context, shareTitle, setDefault, onThemeChange, onOpenHistory, onOpenSettings) {
             BrowserActions(
                 onBack = viewModel::onBack,
                 onForward = viewModel::onForward,
@@ -414,6 +420,7 @@ fun BrowserRoute(
                 onCloseAllTabs = viewModel::onCloseAllTabs,
                 onSelectAdjacentTab = viewModel::onSelectAdjacentTab,
                 onOpenHistory = onOpenHistory,
+                onOpenSettings = onOpenSettings,
             )
         }
     BrowserScreen(

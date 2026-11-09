@@ -16,10 +16,14 @@ fun interface SuggestionProvider {
 
 /** Gợi ý chỉ dựa trên [OmniboxClassifier] và search engine (spec 004). */
 class DefaultSuggestionProvider(
-    private val engine: SearchEngine,
+    private val engineSource: () -> SearchEngine,
 ) : SuggestionProvider {
-    override suspend fun suggest(input: String): List<Suggestion> =
-        when (val result = OmniboxClassifier.classify(input, engine)) {
+    constructor(engine: SearchEngine) : this({ engine })
+
+    /** Engine được đọc lại mỗi lần [suggest] (spec 014 AC9). */
+    override suspend fun suggest(input: String): List<Suggestion> {
+        val engine = engineSource()
+        return when (val result = OmniboxClassifier.classify(input, engine)) {
             is OmniboxResult.Navigate -> {
                 val query = OmniboxClassifier.normalize(input)
                 listOf(
@@ -36,6 +40,7 @@ class DefaultSuggestionProvider(
                 emptyList()
             }
         }
+    }
 }
 
 /** Gộp gợi ý từ nhiều provider: giữ thứ tự, bỏ trùng theo url, cắt còn [limit] (spec 004). */

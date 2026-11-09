@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_title">Settings</string>
+    <string name="settings_back">Back</string>
+    <string name="settings_section_search">Search</string>
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_section_privacy">Privacy and security</string>
+    <string name="settings_section_site">Sites</string>
+    <string name="settings_section_about">About</string>
+    <string name="settings_coming_soon">Coming soon</string>
+    <string name="settings_page_search_engine">Search engine</string>
+    <string name="settings_page_theme">Theme</string>
+    <string name="settings_page_about">About Pixel Browser</string>
+    <string name="settings_page_clear_data">Clear browsing data</string>
+    <string name="settings_page_safe_browsing">Safe Browsing</string>
+    <string name="settings_page_site_settings">Site settings</string>
+    <string name="settings_page_desktop_site">Desktop site</string>
+    <string name="search_engine_custom">Custom</string>
+    <string name="search_engine_custom_hint">Use your own search address</string>
+    <string name="search_custom_name_label">Name</string>
+    <string name="search_custom_template_label">Search address</string>
+    <string name="search_custom_template_help">Put %1$s where the search terms go.</string>
+    <string name="search_custom_preview">Preview: %1$s</string>
+    <string name="search_custom_cancel">Cancel</string>
+    <string name="search_custom_save">Save</string>
+    <string name="search_custom_http_warning">This address is not encrypted. Anyone on the network can see what you search for.</string>
+    <string name="search_error_name_empty">Enter a name.</string>
+    <string name="search_error_name_too_long">The name is too long. Maximum length: %1$d</string>
+    <string name="search_error_template_empty">Enter a search address.</string>
+    <string name="search_error_no_placeholder">The address must contain %1$s where the search terms go.</string>
+    <string name="search_error_multiple_placeholders">The address can contain %1$s only once.</string>
+    <string name="search_error_invalid_url">Enter a valid http or https address, with %1$s in the path or query, not in the host.</string>
+    <string name="search_error_template_too_long">The address is too long. Maximum length: %1$d</string>
+    <string name="appearance_mode_system">System default</string>
+    <string name="appearance_mode_light">Light</string>
+    <string name="appearance_mode_dark">Dark</string>
+    <string name="appearance_dynamic">Dynamic color</string>
+    <string name="appearance_dynamic_summary">Use colors from your wallpaper</string>
+    <string name="about_version">Version %1$s (%2$d)</string>
+    <string name="about_license">License: %1$s</string>
+    <string name="about_source">Source code</string>
+    <string name="about_libraries_title">Open-source libraries</string>
+</resources>
