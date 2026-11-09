@@ -23,8 +23,7 @@ class ExternalAppDialogTargetTest {
     private lateinit var f: BrowserFixture
 
     private fun show(uri: String) {
-        f = BrowserFixture()
-        f.selected().visit("https://a.com/")
+        f = BrowserFixture.onPage("https://a.com/")
         // Mô tả giống launcher Android thật.
         f.launcher.describeResult = ExternalIntents.describe(uri, "app.pixel.browser")
         rule.setContent { BrowserRoute(viewModel = f.viewModel) }

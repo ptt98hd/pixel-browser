@@ -40,4 +40,6 @@ data class BrowserUiState(
     val pendingRequest: EngineRequest? = null,
     /** Tab đang chọn đang phát video toàn màn hình (spec 007 AC20). */
     val isFullscreen: Boolean = false,
+    /** Tab đang chọn hiển thị trang chủ native thay cho engine (spec 010). */
+    val isHome: Boolean = false,
 )

@@ -29,12 +29,16 @@ class BrowserBackHandlingTest {
 
     private lateinit var f: BrowserFixture
 
-    /** Tab được chọn có lịch sử a → b (canGoBack = true) nếu [withHistory]. */
+    /**
+     * [withHistory]: tab trang web có lịch sử a → b (canGoBack = true). Ngược lại: tab home ban đầu (spec 010:
+     * không có trang phía sau, không `backToHome`).
+     */
     private fun launch(withHistory: Boolean) {
-        f = BrowserFixture()
         if (withHistory) {
-            f.selected().visit("https://a.com/")
+            f = BrowserFixture.onPage("https://a.com/")
             f.selected().visit("https://www.b.com/")
+        } else {
+            f = BrowserFixture()
         }
         f.selected().resetCalls()
         rule.setContent { BrowserRoute(viewModel = f.viewModel) }
@@ -116,8 +120,7 @@ class BrowserBackHandlingTest {
 
     /** Tab đang chọn có lịch sử (không phải tab home chưa dùng) để intent mở tab mới. */
     private fun launchWithUsedTab() {
-        f = BrowserFixture()
-        f.selected().fake.simulatePageFinished(f.homeUrl)
+        f = BrowserFixture.onPage("https://w.com/")
         f.selected().visit("https://x.com/")
         rule.setContent { BrowserRoute(viewModel = f.viewModel) }
         rule.waitForIdle()

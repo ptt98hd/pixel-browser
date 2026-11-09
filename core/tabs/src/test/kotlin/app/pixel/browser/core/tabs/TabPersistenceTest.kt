@@ -147,4 +147,136 @@ class TabPersistenceTest {
         assertEquals(listOf("tabs.json"), tmp.root.list()!!.toList())
         assertEquals("new", store().read()!!.selectedTabId)
     }
+
+    // --- Spec 010 AC6: snapshot & migration của tab home ---
+
+    private fun TabManager.fake(id: String) =
+        when (val s = session(id)) {
+            is CountingSession -> s.fake
+            else -> s as FakeEngineSession
+        }
+
+    private fun TabManager.loadCalls(id: String) = (session(id) as CountingSession).loadUrlCalls
+
+    /** Engine state hợp lệ của Fake với mục hiện tại là [urls].last(). */
+    private fun engineStateOf(vararg urls: String): ByteArray {
+        val s = FakeEngineSession()
+        urls.forEach {
+            s.loadUrl(it)
+            s.simulatePageFinished(it)
+        }
+        return s.saveState()!!
+    }
+
+    @Test
+    fun ac6_homeOverPage_snapshotHasHomeUrlAndEngineState() {
+        val m = TabManager(RecordingSessionFactory(), store())
+        val t = m.openTab("https://a.example/")
+        m.fake(t.id).simulatePageFinished("https://a.example/")
+        m.showHome(t.id)
+        val snap = m.snapshot().tabs.single { it.id == t.id }
+        assertEquals(HOME_URL, snap.url)
+        assertNotNull(snap.engineState)
+    }
+
+    @Test
+    fun ac6_homeOverPage_restoredAsHome_withoutLoad_andBackReturnsToPage() {
+        val m1 = TabManager(RecordingSessionFactory(), store())
+        val t = m1.openTab("https://a.example/")
+        m1.fake(t.id).simulatePageFinished("https://a.example/")
+        m1.showHome(t.id)
+        m1.persist()
+
+        val m2 = TabManager(CountingSessionFactory(), FileTabSnapshotStore(file))
+        assertEquals(t.id, m2.selectedTabId.value)
+        val restored = m2.tabs.value.single { it.id == t.id }
+        assertTrue(restored.isHome)
+        assertTrue((m2.session(t.id) as CountingSession).loadUrlCalls.isEmpty())
+        assertTrue(m2.navigateBack(t.id))
+        val back = m2.tabs.value.single { it.id == t.id }
+        assertFalse(back.isHome)
+        assertEquals("https://a.example/", back.url)
+    }
+
+    @Test
+    fun ac6_backToHome_roundTripsThroughFileStore() {
+        store().write(
+            TabsSnapshot(
+                listOf(
+                    TabSnapshot("t1", "https://a.example/", backToHome = true),
+                    TabSnapshot("t2", "https://b.example/", backToHome = false),
+                ),
+                "t1",
+            ),
+        )
+        val read = store().read()!!
+        assertEquals(listOf(true, false), read.tabs.map { it.backToHome })
+    }
+
+    @Test
+    fun ac6_backToHome_restoredIntoTab() {
+        store().write(TabsSnapshot(listOf(TabSnapshot("t1", "https://a.example/", backToHome = true)), "t1"))
+        val m = TabManager(RecordingSessionFactory(), store())
+        assertTrue(
+            m.tabs.value
+                .single()
+                .backToHome,
+        )
+    }
+
+    @Test
+    fun ac6_legacyFileWithoutBackToHomeKey_defaultsToFalse() {
+        file.writeText("""{"selectedTabId":"t1","tabs":[{"id":"t1","url":"https://a.example/","title":"A"}]}""")
+        val read = store().read()!!
+        assertFalse(read.tabs.single().backToHome)
+    }
+
+    @Test
+    fun ac6_migration_legacyAboutBlankWithoutState_becomesHome() {
+        store().write(TabsSnapshot(listOf(TabSnapshot("t1", "about:blank", engineState = null)), "t1"))
+        val m = TabManager(CountingSessionFactory(), store())
+        val tab = m.tabs.value.single()
+        assertTrue(tab.isHome)
+        assertEquals(HOME_URL, tab.url)
+        assertTrue(m.loadCalls("t1").isEmpty())
+        assertEquals(
+            "",
+            m
+                .fake("t1")
+                .state.value.url,
+        )
+    }
+
+    @Test
+    fun ac6_migration_aboutBlankWithValidState_isNotHome_andRestoresState() {
+        val state = engineStateOf("https://a.example/", "about:blank")
+        store().write(TabsSnapshot(listOf(TabSnapshot("t1", "about:blank", engineState = state)), "t1"))
+        val m = TabManager(RecordingSessionFactory(), store())
+        val tab = m.tabs.value.single()
+        assertFalse(tab.isHome)
+        val st = m.fake("t1").state.value
+        assertEquals("about:blank", st.url)
+        assertTrue(st.canGoBack)
+    }
+
+    @Test
+    fun ac6_discardedHomeTab_reselected_doesNotLoad() {
+        val m = TabManager(CountingSessionFactory(), store(), maxLiveSessions = 1)
+        val homeId = m.selectedTabId.value!!
+        m.openTab("https://a.example/")
+        assertEquals(null, m.session(homeId))
+        m.selectTab(homeId)
+        assertTrue(
+            m.tabs.value
+                .single { it.id == homeId }
+                .isHome,
+        )
+        assertTrue(m.loadCalls(homeId).isEmpty())
+        assertEquals(
+            "",
+            m
+                .fake(homeId)
+                .state.value.url,
+        )
+    }
 }

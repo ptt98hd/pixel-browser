@@ -19,7 +19,6 @@ import app.pixel.browser.core.omnibox.SearchEngines
 import app.pixel.browser.core.omnibox.Suggestion
 import app.pixel.browser.core.omnibox.SuggestionProvider
 import app.pixel.browser.core.omnibox.UrlDisplay
-import app.pixel.browser.core.omnibox.homeUrl
 import app.pixel.browser.core.tabs.HOME_URL
 import app.pixel.browser.core.tabs.TabManager
 import app.pixel.browser.core.tabs.TabsSnapshot
@@ -71,7 +70,8 @@ object BrowserMessages {
 
 /**
  * State holder của màn hình trình duyệt (spec 005). Kết hợp [TabManager] với `state` của session được chọn.
- * Khi khởi tạo, nếu tab được chọn chưa tải gì thì tải [homeUrl].
+ * Tab ở trang chủ native (spec 010) là trạng thái của [TabManager]
+ * (`Tab.isHome`): ViewModel không tải URL nào cho home; điều hướng đi qua [TabManager.loadUrl]/[TabManager.navigateBack].
  *
  * Phải dùng trên main thread (như [TabManager]). [uiState] được tính lại đồng bộ từ giá trị hiện tại của
  * [TabManager] và các session mỗi khi một trong các flow đó phát, hoặc sau mỗi hành động.
@@ -88,9 +88,6 @@ class BrowserViewModel(
     /** Xin quyền Android lúc chạy (spec 007 AC15); UI dùng chung cho chụp ảnh (AC19). */
     val runtimePermissions: RuntimePermissionGate = RuntimePermissionGate { emptySet() },
 ) : ViewModel() {
-    /** Trang home tạm thời = trang chủ search engine (spec 004 AC18) cho tới A10. */
-    val homeUrl: String get() = searchEngine.homeUrl
-
     private val _uiState = MutableStateFlow(BrowserUiState())
     val uiState: StateFlow<BrowserUiState> = _uiState.asStateFlow()
 
@@ -108,9 +105,6 @@ class BrowserViewModel(
 
     /** Tab mở từ intent ngoài (spec 006 AC14), chỉ trong bộ nhớ. */
     private val externalTabIds = mutableSetOf<String>()
-
-    /** Tab home mà ViewModel đã tự tải [homeUrl] vào; được tái dùng cho intent nếu chưa có lịch sử (AC13). */
-    private var homeTabId: String? = null
 
     /** Trạng thái xử lý request `ExternalApp` của từng session sống (spec 006 AC23–AC25). */
     private class ExternalAppState {
@@ -142,26 +136,22 @@ class BrowserViewModel(
 
     /** Tab popup (spec 007 AC21) → tab đã mở nó; dùng khi popup gọi `window.close()` (AC22). */
     private val popupOpeners = HashMap<String, String>()
-    private var openingPopup = false
     private var isAppVisible = true
     private var showSetDefaultBrowser = false
     private var recomputing = false
     private var recomputePending = false
 
     init {
-        ensureSelectedLoaded()
         recompute()
         viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            merge(tabManager.tabs, tabManager.selectedTabId).collect {
-                ensureSelectedLoaded()
-                recompute()
-            }
+            merge(tabManager.tabs, tabManager.selectedTabId).collect { recompute() }
         }
     }
 
+    /** Lùi theo [TabManager.navigateBack]: rời home, `goBack()` của engine, hoặc về home nếu tab rời home (spec 010). */
     fun onBack() {
-        val s = current() ?: return
-        if (s.state.value.canGoBack) s.goBack()
+        val id = tabManager.selectedTabId.value ?: return
+        if (tabManager.navigateBack(id)) recompute()
     }
 
     fun onForward() {
@@ -169,9 +159,12 @@ class BrowserViewModel(
         if (s.state.value.canGoForward) s.goForward()
     }
 
+    /** Hiện trang chủ native đè lên trang hiện tại (spec 010); không làm gì nếu đã ở home. */
     fun onHome() {
+        val id = tabManager.selectedTabId.value ?: return
         stopEditing()
-        current()?.loadUrl(homeUrl)
+        exitFullscreen(current())
+        tabManager.showHome(id)
         recompute()
     }
 
@@ -183,7 +176,7 @@ class BrowserViewModel(
     fun onNewTab() {
         stopEditing()
         exitFullscreen(current())
-        tabManager.openTab(homeUrl)
+        tabManager.openTab(HOME_URL)
         recompute()
     }
 
@@ -240,6 +233,13 @@ class BrowserViewModel(
         recompute()
     }
 
+    /** Mở [url] (chỉ URL web hợp lệ, vd. shortcut trang chủ) trong tab đang chọn, rời home nếu cần (spec 010). */
+    fun onOpenUrl(url: String) {
+        if (!isValidWebUrl(url)) return
+        navigate(url)
+        recompute()
+    }
+
     fun onSuggestionClick(suggestion: Suggestion) {
         navigate(suggestion.url)
         recompute()
@@ -283,12 +283,11 @@ class BrowserViewModel(
             val reusable = unusedHomeTab()
             val id =
                 if (reusable != null) {
-                    tabManager.session(reusable)?.loadUrl(url)
+                    tabManager.loadUrl(reusable, url)
                     reusable
                 } else {
                     tabManager.openTab(url).id
                 }
-            homeTabId = null
             externalTabIds += id
         }
         recompute()
@@ -503,14 +502,7 @@ class BrowserViewModel(
             return
         }
         exitFullscreen(opener)
-        // Engine của popup tự điều hướng: không tải homeUrl vào tab mới (ensureSelectedLoaded chạy đồng bộ).
-        openingPopup = true
-        val popup =
-            try {
-                tabManager.openTabForWindow(openerId)
-            } finally {
-                openingPopup = false
-            }
+        val popup = tabManager.openTabForWindow(openerId)
         val target = popup?.let { tabManager.session(it.id) }
         if (popup == null || target == null || !opener.respond(request.id, EngineResponse.AttachWindow(target))) {
             // Engine không nhận session mới làm đích: bỏ tab popup, quay về opener.
@@ -600,12 +592,14 @@ class BrowserViewModel(
     private fun isOsGranted(permission: SitePermission): Boolean =
         androidPermissions(permission).any(runtimePermissions::isGranted)
 
-    /** Tab home ban đầu, đang chọn, chưa có lịch sử và chưa rời [homeUrl] (AC13). */
+    /**
+     * Tab đang chọn ở home mà chưa dùng (spec 006 AC13): không có trang bên dưới để Back về và chưa từng rời
+     * home (`backToHome`).
+     */
     private fun unusedHomeTab(): String? {
-        val id = homeTabId ?: return null
-        if (id != tabManager.selectedTabId.value) return null
-        val st = tabManager.session(id)?.state?.value ?: return null
-        return id.takeIf { !st.canGoBack && (st.url.isEmpty() || st.url == homeUrl) }
+        val id = tabManager.selectedTabId.value ?: return null
+        val tab = tabManager.tabs.value.firstOrNull { it.id == id } ?: return null
+        return id.takeIf { tab.isHome && !tab.backToHome && !tabManager.canNavigateBack(id) }
     }
 
     /**
@@ -697,7 +691,7 @@ class BrowserViewModel(
 
     private fun navigate(url: String) {
         stopEditing()
-        current()?.loadUrl(url)
+        tabManager.selectedTabId.value?.let { tabManager.loadUrl(it, url) }
     }
 
     private fun stopEditing() {
@@ -705,20 +699,6 @@ class BrowserViewModel(
         suggestions = emptyList()
         suggestionJob?.cancel()
         suggestionJob = null
-    }
-
-    /** Tab home mới (initial, tạo lại sau khi đóng tab cuối, khôi phục) chưa tải gì → tải [homeUrl]. */
-    private fun ensureSelectedLoaded() {
-        if (openingPopup) return
-        val id = tabManager.selectedTabId.value ?: return
-        if (id in popupOpeners) return
-        val tab = tabManager.tabs.value.firstOrNull { it.id == id } ?: return
-        val session = tabManager.session(id) ?: return
-        val st = session.state.value
-        if (tab.url == HOME_URL && st.url.isEmpty() && !st.isLoading && st.error == null) {
-            session.loadUrl(homeUrl)
-            homeTabId = id
-        }
     }
 
     /** Theo dõi `state` của mọi session sống (title trong tab switcher, chrome của tab được chọn). */
@@ -763,6 +743,8 @@ class BrowserViewModel(
     }
 
     private fun publishState() {
+        // Engine có thể vừa tự điều hướng tab home chưa dùng (spec 007): lấy danh sách tab mới nhất.
+        tabManager.refresh()
         val ids =
             tabManager.tabs.value
                 .map { it.id }
@@ -771,17 +753,31 @@ class BrowserViewModel(
         popupOpeners.keys.retainAll(ids)
         val selectedId = tabManager.selectedTabId.value
         val session = selectedId?.let(tabManager::session)
-        val st = session?.state?.value
+        val isHome = tabManager.tabs.value.any { it.id == selectedId && it.isHome }
+        // Ở home không đồng bộ gì từ engine (trang bên dưới có thể vẫn đổi state).
+        val st = session?.state?.value.takeUnless { isHome }
         val tabs =
             tabManager.tabs.value.map { tab ->
-                val s = tabManager.session(tab.id)?.state?.value
-                TabItem(
-                    id = tab.id,
-                    title = s?.title?.ifEmpty { null } ?: tab.title,
-                    url = s?.url?.ifEmpty { null } ?: tab.url,
-                )
+                if (tab.isHome) {
+                    TabItem(id = tab.id, title = "", url = "")
+                } else {
+                    val s = tabManager.session(tab.id)?.state?.value
+                    TabItem(
+                        id = tab.id,
+                        title = s?.title?.ifEmpty { null } ?: tab.title,
+                        url = s?.url?.ifEmpty { null } ?: tab.url,
+                    )
+                }
             }
-        val url = st?.url ?: tabs.firstOrNull { it.id == selectedId }?.url.orEmpty()
+        val url = if (isHome) "" else st?.url ?: tabs.firstOrNull { it.id == selectedId }?.url.orEmpty()
+        val isExternal = selectedId != null && selectedId in externalTabIds
+        // Tab mở từ intent: Back ở gốc lịch sử engine quay về app gọi (spec 006 AC14) nên `backToHome` không tính.
+        val canGoBack =
+            when {
+                selectedId == null -> false
+                isExternal && !isHome -> st?.canGoBack == true
+                else -> tabManager.canNavigateBack(selectedId)
+            }
         val prompt =
             session
                 ?.requests
@@ -796,7 +792,7 @@ class BrowserViewModel(
                 isLoading = st?.isLoading == true && st.error == null,
                 progress = st?.progress ?: 0,
                 securityState = st?.securityState ?: BrowserUiState().securityState,
-                canGoBack = st?.canGoBack == true,
+                canGoBack = canGoBack,
                 canGoForward = st?.canGoForward == true,
                 tabCount = tabs.size,
                 tabs = tabs,
@@ -807,7 +803,8 @@ class BrowserViewModel(
                 showSetDefaultBrowser = showSetDefaultBrowser,
                 externalPrompt = prompt,
                 externalPromptTabId = selectedId.takeIf { prompt != null },
-                isExternalTab = selectedId != null && selectedId in externalTabIds,
+                isExternalTab = isExternal,
+                isHome = isHome,
                 pendingRequest = session?.let(::pendingRequestOf),
                 isFullscreen = st?.isFullscreen == true,
             )

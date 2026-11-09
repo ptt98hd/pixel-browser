@@ -21,6 +21,7 @@ import app.pixel.browser.feature.browser.BrowserTestTags.tabItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -35,7 +36,7 @@ class TabSwitcherSheetTest {
     private lateinit var f: BrowserFixture
     private lateinit var ids: List<String>
 
-    /** 3 tab: [0] home (title rỗng → host), [1] "Alpha" (canGoBack), [2] "Beta" (được chọn). */
+    /** 3 tab: [0] home ("New tab", spec 010/009 AC13), [1] "Alpha" (canGoBack), [2] "Beta" (được chọn). */
     private fun launchWithThreeTabs() {
         f = BrowserFixture()
         val a = f.tabManager.openTab("https://a.com/start")
@@ -74,7 +75,8 @@ class TabSwitcherSheetTest {
     @Test
     fun ac27_showsTitle_orHostWhenTitleEmpty() {
         launchWithThreeTabs()
-        rule.onNodeWithTag(tabItem(ids[0])).assert(hasText("google.com", substring = true))
+        val newTab = rule.activity.getString(R.string.browser_untitled_tab)
+        rule.onNodeWithTag(tabItem(ids[0])).assert(hasText(newTab, substring = true))
         rule.onNodeWithTag(tabItem(ids[1])).assert(hasText("Alpha", substring = true))
         rule.onNodeWithTag(tabItem(ids[2])).assert(hasText("Beta", substring = true))
     }
@@ -96,7 +98,8 @@ class TabSwitcherSheetTest {
         rule.waitForIdle()
         assertEquals(ids[0], f.tabManager.selectedTabId.value)
         rule.onNodeWithTag(TAB_SHEET).assertDoesNotExist()
-        rule.onNodeWithTag(URL_DISPLAY).assertTextIs("google.com")
+        // Spec 010: tab home hiện placeholder của thanh địa chỉ.
+        rule.onNodeWithTag(URL_DISPLAY).assertTextIs(rule.activity.getString(R.string.browser_url_placeholder))
         rule.onNodeWithTag(BTN_BACK).assertIsNotEnabled()
     }
 
@@ -149,7 +152,17 @@ class TabSwitcherSheetTest {
         val newId = tabs.last().id
         assertNotEquals(ids[2], newId)
         assertEquals(newId, f.tabManager.selectedTabId.value)
-        assertEquals(listOf(f.homeUrl), f.tabManager.spy(newId).loadUrlCalls)
+        assertTrue(
+            f.tabManager
+                .spy(newId)
+                .loadUrlCalls
+                .isEmpty(),
+        )
+        assertTrue(
+            f.tabManager.tabs.value
+                .last()
+                .isHome,
+        )
         rule.onNodeWithTag(TAB_SHEET).assertDoesNotExist()
         rule.onNodeWithTag(TAB_COUNT, useUnmergedTree = true).assertTextIs("4")
     }

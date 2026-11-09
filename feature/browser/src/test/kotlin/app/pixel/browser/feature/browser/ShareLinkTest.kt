@@ -25,7 +25,7 @@ class ShareLinkTest {
 
     @Test
     fun ac26_share_startsChooserWrappingSendTextWithUrlAndTitle() {
-        val f = BrowserFixture()
+        val f = BrowserFixture.onPage("https://start.example/")
         f.selected().apply {
             loadUrl("https://example.com/a")
             fake.simulateTitle("A")

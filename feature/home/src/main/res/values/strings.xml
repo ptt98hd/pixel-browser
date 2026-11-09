@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_search_placeholder">Search or type URL</string>
+    <string name="home_add_shortcut">Add shortcut</string>
+    <string name="home_customize">Customize home page</string>
+    <string name="home_menu_edit">Edit</string>
+    <string name="home_menu_remove">Remove</string>
+    <string name="home_move_left">Move left</string>
+    <string name="home_move_right">Move right</string>
+    <string name="home_shortcut_options">Shortcut options</string>
+    <string name="home_dialog_add_title">Add shortcut</string>
+    <string name="home_dialog_edit_title">Edit shortcut</string>
+    <string name="home_dialog_name">Name (optional)</string>
+    <string name="home_dialog_url">Website address</string>
+    <string name="home_dialog_save">Save</string>
+    <string name="home_dialog_cancel">Cancel</string>
+    <string name="home_error_invalid">Enter a valid web address (http or https).</string>
+    <string name="home_error_duplicate">This site is already on your home page.</string>
+    <string name="home_error_full">The home page is full (20 shortcuts).</string>
+    <string name="home_sheet_title">Background</string>
+    <string name="home_bg_dynamic">Theme</string>
+    <string name="home_bg_color">Color %1$d</string>
+    <string name="home_bg_image">Photo</string>
+    <string name="home_bg_dim">Darken photo</string>
+    <string name="home_bg_dim_slider">Photo darkness</string>
+    <string name="home_message_image_failed">Couldn\'t use that photo.</string>
+</resources>

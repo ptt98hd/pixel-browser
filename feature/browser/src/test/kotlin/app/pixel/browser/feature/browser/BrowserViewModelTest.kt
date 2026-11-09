@@ -2,9 +2,7 @@ package app.pixel.browser.feature.browser
 
 import app.pixel.browser.core.engine.ScrollCommand
 import app.pixel.browser.core.engine.SecurityState
-import app.pixel.browser.core.omnibox.SearchEngines
 import app.pixel.browser.core.omnibox.SuggestionKind
-import app.pixel.browser.core.omnibox.homeUrl
 import app.pixel.browser.core.omnibox.searchUrl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -40,10 +38,11 @@ class BrowserViewModelTest {
     // --- AC1 (phần ViewModel) ---
 
     @Test
-    fun init_emptyTabManager_selectedTabLoadsHomeUrl() {
-        assertEquals(SearchEngines.Default.homeUrl, vm.homeUrl)
-        assertEquals(listOf(vm.homeUrl), f.selected().loadUrlCalls)
-        assertEquals(vm.homeUrl, f.state().url)
+    fun init_emptyTabManager_selectedTabIsHome_withoutLoad() {
+        // Spec 010: tab home không tải trang của search engine.
+        assertTrue(f.state().isHome)
+        assertTrue(f.selected().loadUrlCalls.isEmpty())
+        assertEquals("", f.state().url)
         assertEquals(1, f.state().tabCount)
         assertEquals(f.tabManager.selectedTabId.value, f.state().selectedTabId)
     }
@@ -79,6 +78,7 @@ class BrowserViewModelTest {
 
     @Test
     fun selectedSessionStateChanges_areReflectedLive() {
+        f = BrowserFixture.onPage("https://start.example/")
         val s = f.selected()
         s.loadUrl("https://www.example.com/path?q=1")
         s.fake.simulateProgress(70)
@@ -172,6 +172,7 @@ class BrowserViewModelTest {
 
     @Test
     fun cancelEditing_exitsWithoutLoading_andClearsSuggestions() {
+        f = BrowserFixture.onPage("https://www.google.com/")
         vm.onStartEditing()
         vm.onQueryChange("half typed")
         f.selected().resetCalls()
@@ -194,6 +195,7 @@ class BrowserViewModelTest {
 
     @Test
     fun historyFlags_followSession() {
+        f = BrowserFixture.onPage("https://start.example/")
         val s = f.selected()
         s.visit("https://a.com/")
         s.visit("https://b.com/")
@@ -206,6 +208,7 @@ class BrowserViewModelTest {
 
     @Test
     fun back_forward_home_delegateToSelectedSession() {
+        f = BrowserFixture.onPage("https://start.example/")
         val s = f.selected()
         s.visit("https://a.com/")
         s.visit("https://b.com/")
@@ -216,7 +219,9 @@ class BrowserViewModelTest {
         vm.onForward()
         assertEquals(1, s.goForwardCalls)
         vm.onHome()
-        assertEquals(listOf(vm.homeUrl), s.loadUrlCalls)
+        // Spec 010: Home hiển thị trang chủ native, không tải URL nào.
+        assertTrue(f.state().isHome)
+        assertTrue(s.loadUrlCalls.isEmpty())
     }
 
     @Test
@@ -251,7 +256,7 @@ class BrowserViewModelTest {
     // --- AC21 / AC25 / AC30 ---
 
     @Test
-    fun newTab_appendsSelectedTabLoadingHome() {
+    fun newTab_appendsSelectedHomeTab_withoutLoad() {
         val before =
             f.tabManager.tabs.value
                 .map { it.id }
@@ -261,7 +266,13 @@ class BrowserViewModelTest {
         assertEquals(before, after.dropLast(1).map { it.id })
         val newId = after.last().id
         assertEquals(newId, f.tabManager.selectedTabId.value)
-        assertEquals(listOf(vm.homeUrl), f.tabManager.spy(newId).loadUrlCalls)
+        assertTrue(
+            f.tabManager
+                .spy(newId)
+                .loadUrlCalls
+                .isEmpty(),
+        )
+        assertTrue(f.state().isHome)
         assertEquals(2, f.state().tabCount)
         assertEquals(newId, f.state().selectedTabId)
     }
@@ -270,8 +281,8 @@ class BrowserViewModelTest {
 
     @Test
     fun reload_reloadsSelectedSession() {
+        f = BrowserFixture.onPage("https://start.example/")
         val s = f.selected()
-        s.fake.simulatePageFinished(vm.homeUrl)
         vm.onReload()
         assertEquals(1, s.reloadCalls)
         assertTrue(s.fake.state.value.isLoading)
@@ -318,7 +329,8 @@ class BrowserViewModelTest {
         vm.onSelectTab(first)
         assertEquals(first, f.tabManager.selectedTabId.value)
         assertEquals(first, f.state().selectedTabId)
-        assertEquals(vm.homeUrl, f.state().url)
+        assertTrue(f.state().isHome)
+        assertEquals("", f.state().url)
     }
 
     @Test
