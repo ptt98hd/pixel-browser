@@ -29,6 +29,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -37,9 +38,11 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.pixel.browser.core.ui.PixelIconButton
+import app.pixel.browser.feature.browser.gesture.tabSwipe
 
 /** Số tab tối đa hiển thị trên badge; lớn hơn thì hiện `99+` (AC17). */
 private const val MAX_BADGE_COUNT = 99
@@ -61,8 +64,40 @@ fun BrowserBottomBar(
     onTabsClick: () -> Unit,
     onMenuClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Spec 008 AC12: vuốt ngang trên thanh để đổi tab kề (do `GestureGate` quyết định). */
+    tabSwipeEnabled: Boolean = true,
 ) {
-    Surface(modifier = modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainer) {
+    val tabIndex = state.tabs.indexOfFirst { it.id == state.selectedTabId }
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val previousLabel = stringResource(R.string.browser_previous_tab)
+    val nextLabel = stringResource(R.string.browser_next_tab)
+    val tabActions =
+        buildList {
+            if (tabIndex > 0) {
+                add(
+                    CustomAccessibilityAction(previousLabel) {
+                        actions.onSelectAdjacentTab(-1)
+                        true
+                    },
+                )
+            }
+            if (tabIndex in 0 until state.tabs.lastIndex) {
+                add(
+                    CustomAccessibilityAction(nextLabel) {
+                        actions.onSelectAdjacentTab(+1)
+                        true
+                    },
+                )
+            }
+        }
+    Surface(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .testTag(BrowserTestTags.BOTTOM_BAR)
+                .tabSwipe(tabSwipeEnabled, tabIndex, state.tabs.size, rtl, actions.onSelectAdjacentTab),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
         Row(
             modifier =
                 Modifier
@@ -100,6 +135,7 @@ fun BrowserBottomBar(
                 longPressLabel = stringResource(R.string.browser_new_tab),
                 onClick = onTabsClick,
                 onLongClick = actions.onNewTab,
+                extraActions = tabActions,
             ) { TabCountBadge(state.tabCount) }
             ChromeButton(
                 tag = BrowserTestTags.BTN_MENU,
@@ -125,6 +161,7 @@ private fun RowScope.ChromeButton(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     enabled: Boolean = true,
+    extraActions: List<CustomAccessibilityAction> = emptyList(),
     content: @Composable () -> Unit,
 ) {
     PixelIconButton(
@@ -145,7 +182,7 @@ private fun RowScope.ChromeButton(
                                 onLongClick()
                                 true
                             },
-                        )
+                        ) + extraActions
                 }.testTag(tag),
     ) {
         val color = LocalContentColor.current

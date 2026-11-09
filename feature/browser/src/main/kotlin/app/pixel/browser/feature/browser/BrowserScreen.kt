@@ -13,14 +13,18 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
+import androidx.activity.BackEventCompat
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.systemGestures
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -30,6 +34,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,6 +48,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -58,15 +65,29 @@ import app.pixel.browser.core.data.ThemeSettings
 import app.pixel.browser.core.engine.EngineSession
 import app.pixel.browser.core.engine.originOf
 import app.pixel.browser.core.omnibox.UrlDisplay
+import app.pixel.browser.feature.browser.gesture.BackGestureIndicator
+import app.pixel.browser.feature.browser.gesture.EdgeSwipeOverlay
+import app.pixel.browser.feature.browser.gesture.GestureGate
+import app.pixel.browser.feature.browser.gesture.PullToRefreshHost
 import app.pixel.browser.feature.browser.intent.DefaultBrowserController
 import app.pixel.browser.feature.browser.intent.RoleManagerDefaultBrowser
 import app.pixel.browser.feature.browser.intent.defaultAppsSettingsIntent
 import app.pixel.browser.feature.browser.tabs.BitmapTabThumbnailRepository
 import app.pixel.browser.feature.browser.tabs.TabSwitcher
 import app.pixel.browser.feature.browser.web.EngineRequestHost
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+
+/** Hệ thống dùng điều hướng cử chỉ khi cả hai mép có vùng cử chỉ hệ thống (spec 008 AC9). */
+@Composable
+private fun rememberSystemGestureNav(): Boolean {
+    val density = LocalDensity.current
+    val direction = LocalLayoutDirection.current
+    val insets = WindowInsets.systemGestures
+    return insets.getLeft(density, direction) > 0 || insets.getRight(density, direction) > 0
+}
 
 /** Có thể chia sẻ [url] không: không chia sẻ URL rỗng/trang trống (AC26). */
 internal fun canShare(url: String): Boolean = UrlDisplay.forEditing(url).isNotBlank()
@@ -91,6 +112,8 @@ fun BrowserScreen(
     favicon: @Composable (String) -> ImageBitmap? = { null },
     /** Spec 009: báo cho [BrowserRoute] khi tab switcher mở/đóng để pause/resume WebView phía sau. */
     onSwitcherOpenChange: (Boolean) -> Unit = {},
+    /** Spec 008: true khi hệ thống dùng điều hướng cử chỉ (mặc định tính từ `WindowInsets.systemGestures`). */
+    systemGestureNav: Boolean = rememberSystemGestureNav(),
 ) {
     var menuOpen by rememberSaveable { mutableStateOf(false) }
     var tabsOpen by rememberSaveable { mutableStateOf(false) }
@@ -98,13 +121,37 @@ fun BrowserScreen(
 
     // AC31: (a) sheet/menu → đóng; (b) đang sửa → hủy sửa; (c) có lịch sử → goBack; (d) không chặn.
     // Spec 006 AC14: tab mở từ intent, hết lịch sử → đóng tab và quay về app gọi.
-    BackHandler(enabled = menuOpen || tabsOpen || state.isEditingUrl || state.canGoBack || state.isExternalTab) {
+    // Spec 008 AC7: nhánh (c) vẽ mũi tên `back_gesture_indicator` theo tiến độ của predictive back.
+    var backProgress by remember { mutableFloatStateOf(0f) }
+    var backFromRight by remember { mutableStateOf(false) }
+    var backIndicatorVisible by remember { mutableStateOf(false) }
+    val currentState by rememberUpdatedState(state)
+    val currentActions by rememberUpdatedState(actions)
+    PredictiveBackHandler(
+        enabled = menuOpen || tabsOpen || state.isEditingUrl || state.canGoBack || state.isExternalTab,
+    ) { events ->
+        // Fullscreen có BackHandler đăng ký sau nên thắng; handler này không nhận sự kiện khi đó.
+        val showsIndicator = !(menuOpen || tabsOpen || currentState.isEditingUrl) && currentState.canGoBack
+        try {
+            events.collect { event ->
+                if (showsIndicator) {
+                    backProgress = event.progress
+                    backFromRight = event.swipeEdge == BackEventCompat.EDGE_RIGHT
+                    backIndicatorVisible = true
+                }
+            }
+        } catch (e: CancellationException) {
+            backIndicatorVisible = false
+            throw e
+        }
+        backIndicatorVisible = false
+        // Đọc lại state/actions mới nhất sau khi cử chỉ kết thúc (có thể đã đổi trong lúc vuốt).
         when {
             tabsOpen -> tabsOpen = false
             menuOpen -> menuOpen = false
-            state.isEditingUrl -> actions.onCancelEditing()
-            state.canGoBack -> actions.onBack()
-            else -> actions.onReturnToCaller()
+            currentState.isEditingUrl -> currentActions.onCancelEditing()
+            currentState.canGoBack -> currentActions.onBack()
+            else -> currentActions.onReturnToCaller()
         }
     }
     // Spec 007 AC20: khi fullscreen, Back thoát fullscreen trước mọi nhánh của AC31 (handler đăng ký sau thắng).
@@ -129,12 +176,26 @@ fun BrowserScreen(
         }
     }
 
+    val gestures =
+        GestureGate.of(
+            state,
+            overlayOpen = menuOpen || tabsOpen || themeDialogOpen,
+            systemGestureNav = systemGestureNav,
+        )
     Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
         Column(Modifier.fillMaxSize()) {
             // Fullscreen (AC20): chrome bị gỡ, engine vẫn trong cây (không pause WebView đang phát video).
             if (!state.isFullscreen) BrowserTopBar(state = state, actions = actions)
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                if (state.isHome) homeContent() else engineContent()
+                // Spec 008: vuốt cạnh (chỉ khi không có điều hướng cử chỉ và đi được) bọc nội dung.
+                EdgeSwipeOverlay(
+                    edgeBack = gestures.edgeBack,
+                    edgeForward = gestures.edgeForward,
+                    onBack = actions.onBack,
+                    onForward = actions.onForward,
+                ) {
+                    if (state.isHome) homeContent() else engineContent()
+                }
                 // Snackbar ngay trên bottom bar (đáy vùng nội dung).
                 SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
             }
@@ -149,9 +210,11 @@ fun BrowserScreen(
                         tabsOpen = true
                     },
                     onThemeClick = { themeDialogOpen = true },
+                    tabSwipeEnabled = gestures.tabSwipe,
                 )
             }
         }
+        if (backIndicatorVisible) BackGestureIndicator(progress = { backProgress }, fromRight = backFromRight)
         if (state.isFullscreen) fullscreenContent()
         // Spec 009: toàn màn hình, phủ cả top/bottom bar; có snackbar "Hoàn tác" riêng nằm trên lưới.
         if (tabsOpen) {
@@ -194,11 +257,13 @@ private fun ChromeBottom(
     onMenuOpenChange: (Boolean) -> Unit,
     onTabsClick: () -> Unit,
     onThemeClick: () -> Unit,
+    tabSwipeEnabled: Boolean,
 ) {
     Box {
         BrowserBottomBar(
             state = state,
             actions = actions,
+            tabSwipeEnabled = tabSwipeEnabled,
             onTabsClick = onTabsClick,
             onMenuClick = { onMenuOpenChange(true) },
         )
@@ -293,6 +358,9 @@ fun BrowserRoute(
             session?.onResume()
         }
     }
+    // Spec 008 AC17: kéo-để-tải-lại tắt khi sửa URL, fullscreen, có dialog, switcher mở hoặc ở home.
+    val pullEnabled =
+        GestureGate.of(state, overlayOpen = switcherOpen, systemGestureNav = false).pullToRefresh
     val actions =
         remember(viewModel, context, shareTitle, setDefault, onThemeChange) {
             BrowserActions(
@@ -335,6 +403,7 @@ fun BrowserRoute(
                 onOpenTabSwitcher = viewModel::onOpenTabSwitcher,
                 onUndoCloseTab = viewModel::onUndoCloseTab,
                 onCloseAllTabs = viewModel::onCloseAllTabs,
+                onSelectAdjacentTab = viewModel::onSelectAdjacentTab,
             )
         }
     BrowserScreen(
@@ -343,7 +412,13 @@ fun BrowserRoute(
         modifier = modifier,
         themeSettings = themeSettings,
         fullscreenContent = { FullscreenContainer(view = session?.fullscreenView) },
-        engineContent = { EngineContainer(session = session, paused = switcherOpen) },
+        engineContent = {
+            PullToRefreshHost(
+                session = session,
+                enabled = pullEnabled,
+                onReload = viewModel::onReload,
+            ) { EngineContainer(session = session, paused = switcherOpen) }
+        },
         homeContent = homeContent,
         thumbnail = { id -> thumbnails?.thumbnail(id) },
         favicon = { id -> rememberFavicon(viewModel, id, state.tabs) },

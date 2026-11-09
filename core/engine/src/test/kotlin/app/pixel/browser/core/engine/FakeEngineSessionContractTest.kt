@@ -86,6 +86,17 @@ class FakeEngineSessionContractTest : EngineSessionContractTest() {
 
     override fun EngineSession.emitFavicon(bitmap: Bitmap) = fake.simulateFavicon(bitmap)
 
+    // --- Spec 008 hooks ---
+
+    override fun EngineSession.emitScroll(y: Int) = fake.simulateScroll(y)
+
+    override fun EngineSession.emitOverScrolled(
+        scrollY: Int,
+        clampedY: Boolean,
+    ) {
+        if (scrollY == 0 && clampedY) fake.simulateOverscrollTop()
+    }
+
     // --- Spec 005 ---
 
     @Test

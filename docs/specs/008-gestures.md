@@ -73,7 +73,7 @@ object GestureGate { fun of(state: BrowserUiState, overlayOpen: Boolean, systemG
 
 ### Vuốt cạnh khi không có điều hướng cử chỉ (Compose, Fake)
 9. **AC9 – Dải cạnh chỉ có khi đi được.** `BrowserScreen(systemGestureNav = false)`: `canGoBack = true, canGoForward = false` → có `edge_swipe_left` (rộng 20dp, áp mép trái `engine_container`), không có `edge_swipe_right`; ngược lại tương tự. `systemGestureNav = true` → không có cả hai dù đi được. Tham số `systemGestureNav` mặc định tính từ `WindowInsets.systemGestures` (Robolectric mặc định = 0 → `false`). (`EdgeSwipeTest`)
-10. **AC10 – Vuốt cạnh trái = back.** `performTouchInput` trên `edge_swipe_left`: `down` ở mép, `moveBy(x = 60dp)` → `edge_swipe_indicator` hiện, chưa `goBack`; tiếp `moveBy(60dp)` (tổng 120 ≥ 96) rồi `up` → `goBack()` đúng 1 lần, indicator biến mất. Kéo 60dp rồi thả chậm → không `goBack`. Vuốt nhanh (`swipeRight(durationMillis = 50)`) dài 40dp → `goBack` (fling AC3). (`EdgeSwipeTest`)
+10. **AC10 – Vuốt cạnh trái = back.** `performTouchInput` trên `edge_swipe_left`: `down` ở mép, `moveBy(x = 60dp)` → `edge_swipe_indicator` hiện, chưa `goBack`; tiếp `moveBy(60dp)` (tổng 120 ≥ 96) rồi `up` → `goBack()` đúng 1 lần, indicator biến mất. Kéo 60dp rồi thả chậm → không `goBack`. Vuốt nhanh (`swipe(durationMillis = 30)`) dài 40dp → `goBack` (fling AC3). (`EdgeSwipeTest`)
 11. **AC11 – Vuốt cạnh phải = forward.** Đối xứng AC10 trên `edge_swipe_right`, kéo sang trái → `goForward()` đúng 1 lần. Vuốt dọc trong dải cạnh (dy lớn, dx nhỏ) → không gì xảy ra. (`EdgeSwipeTest`)
 
 ### Vuốt bottom bar đổi tab
@@ -118,3 +118,21 @@ object GestureGate { fun of(state: BrowserUiState, overlayOpen: Boolean, systemG
 ## Quyết định (orchestrator, 2026-11-05)
 - Chấp nhận các đề xuất của spec-writer: giữ material3 theo BOM (1.4.0) với component tự viết; thêm `datastore-preferences` + `graphics-shapes`; shortcut mặc định Wikipedia/YouTube/GitHub/OpenStreetMap; chưa có Forward từ home; `undoClose` chỉ chọn lại tab nếu tab đó đang được chọn khi đóng (cập nhật spec 002 khi merge 009); pull-to-refresh có fallback `canScrollVertically(-1)` nếu `onOverScrolled` không được gọi.
 - Thứ tự: 007 → 010 → 009 → 008; 011 song song (011 tạo `:core:data` nếu làm trước 010).
+
+## Quyết định khi implement (implementer, 2026-11-10)
+- AC10 (fling): giữ `EDGE_FLING_VELOCITY = 1000 dp/s`; ví dụ trong AC10 sửa thành "vuốt 40dp trong 30ms" (`swipe(durationMillis = 30)`, ~1333 dp/s) thay cho 50ms (800 dp/s).
+- Chuỗi resource: `browser_previous_tab` ("Previous tab" / "Thẻ trước") và `browser_next_tab` ("Next tab" / "Thẻ sau") cho `CustomAccessibilityAction` của `btn_tabs` (AC14).
+- Pull-to-refresh được gắn ở `BrowserRoute` qua `PullToRefreshHost(session, enabled, onReload)` bọc `EngineContainer(session)`; `enabled` = `GestureGate.of(state, overlayOpen = switcherOpen, …).pullToRefresh`, còn `isAtTop` đọc từ `session.state` tại thời điểm `down`. Không dùng `canScrollVertically(-1)` làm fallback trong lần này (chưa có bằng chứng Chromium không gọi `onOverScrolled`); nếu `PullToRefreshInstrumentedTest` thủ công cho thấy thiếu, thêm fallback ở `PixelWebView`.
+- `systemGestureNav` mặc định = `WindowInsets.systemGestures` trái hoặc phải > 0. Ở chế độ cử chỉ dùng predictive back của hệ thống (`PredictiveBackHandler`, `android:enableOnBackInvokedCallback="true"` kèm `tools:ignore="UnusedAttribute"` vì minSdk 31 < 33).
+- Cử chỉ bị hủy được nhận ra bằng sự kiện nhả đã `isConsumed` (cách Compose báo `ACTION_CANCEL`); cả ba cử chỉ không commit trong trường hợp này.
+- RTL: dải cạnh vẫn gắn tag theo vị trí vật lý (`edge_swipe_left` = mép trái); trong RTL mép phải là back, mép trái là forward.
+- Việc còn lại (thủ công): `PullToRefreshInstrumentedTest`, kiểm tra predictive back và độ nhạy ngưỡng trên emulator API 34+.
+
+## Quyết định sau review (implementer, 2026-11-10)
+- Fallback pull-to-refresh (thay cho "không fallback" ở mục trước): `PixelWebView.onTouchEvent` dùng `TopPullFallback` (`:core:engine`, JVM-testable). Nếu lúc `down` trang ở đỉnh (`scrollY == 0 && !canScrollVertically(-1)`), chưa có `onOverScrolled` thật, và ngón tay kéo xuống tích lũy >= 24dp thì phát `topOverscroll` đúng một lần trong cử chỉ; overscroll thật đến trước thì fallback không phát (không refresh đúp). Hạn chế đã biết: scroller nội bộ chưa chạm đỉnh trong trang có root ở đỉnh có thể gây refresh nhầm khi Chromium không báo overscroll; cần kiểm chứng bằng `PullToRefreshInstrumentedTest` trên máy thật (ghi ở E05).
+- RTL: hình học dải cạnh và `BackGestureIndicator` luôn dùng `LayoutDirection.Ltr` (vị trí/`swipeEdge` là vật lý); chỉ ánh xạ back/forward theo `rtl` (đọc trước khi bọc). `BackGestureIndicator` tự bọc Ltr bên trong nên nơi gọi không cần bọc.
+- Dải 20dp: để tap ở mép vẫn tới trang, `EdgeSwipeOverlay` quan sát ở `PointerEventPass.Initial` trên vùng bọc nội dung (không có node nhận chạm chồng lên trang) và chỉ consume sau khi vượt touch slop; hai node `edge_swipe_*` là marker 20dp. Đánh đổi: khi dải bật (3 nút, đi được), vuốt ngang bắt đầu trong 20dp mép bị app chiếm thay vì trang (carousel/bản đồ sát mép).
+- Hiệu năng: tiến độ/khoảng kéo truyền dạng `() -> Float` và chỉ đọc trong pha layout/draw (`offset`/`layout`/`graphicsLayer`), không recomposition theo từng sự kiện chạm.
+- Back handler đọc `state`/`actions` mới nhất (`rememberUpdatedState`) sau khi cử chỉ kết thúc; `tabSwipe` dùng `rememberUpdatedState(onSelect)`.
+- `PullToRefreshHost`: giữ/hủy `Job` chờ trước đó, chỉ reload khi session của cử chỉ vẫn là session đang hiển thị, chờ `isLoading = true` (timeout 1s) rồi chờ `false` mới ẩn indicator.
+- `WebViewEngineSession` giữ tham chiếu có kiểu `PixelWebView` và đặt `owner = null` trước `destroy()`.

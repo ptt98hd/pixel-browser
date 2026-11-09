@@ -2,6 +2,11 @@ package app.pixel.browser.core.engine
 
 import android.graphics.Bitmap
 import android.view.View
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -95,6 +100,20 @@ abstract class EngineSessionContractTest {
 
     /** Mô phỏng `onReceivedIcon(bitmap)` (WebView: `dispatchReceivedIcon`, Fake: `simulateFavicon`). */
     protected abstract fun EngineSession.emitFavicon(bitmap: Bitmap)
+
+    // --- Spec 008: cuộn / overscroll ---
+
+    /** Mô phỏng `onScrollChanged` với `scrollY = y` (WebView: `dispatchScrollChanged`, Fake: `simulateScroll`). */
+    protected abstract fun EngineSession.emitScroll(y: Int)
+
+    /**
+     * Mô phỏng `onOverScrolled(…, scrollY, …, clampedY)` (WebView: `dispatchOverScrolled`). Fake chỉ có
+     * `simulateOverscrollTop`, nên chỉ gọi nó khi `scrollY == 0 && clampedY`.
+     */
+    protected abstract fun EngineSession.emitOverScrolled(
+        scrollY: Int,
+        clampedY: Boolean,
+    )
 
     private fun icon(): Bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
 
@@ -787,5 +806,138 @@ abstract class EngineSessionContractTest {
         assertNull(s.favicon.value)
         s.emitFavicon(icon())
         assertNull(s.favicon.value)
+    }
+
+    // --- Spec 008 AC1: isAtTop ---
+
+    @Test
+    fun spec008_ac1_isAtTop_isTrueOnNewSession() {
+        assertTrue(createSession().state.value.isAtTop)
+    }
+
+    @Test
+    fun spec008_ac1_scroll_updatesIsAtTop_andReturningToZeroRestoresIt() {
+        val s = createSession()
+        s.emitScroll(300)
+        assertFalse(s.state.value.isAtTop)
+        s.emitScroll(0)
+        assertTrue(s.state.value.isAtTop)
+    }
+
+    @Test
+    fun spec008_ac1_loadUrl_resetsIsAtTop() {
+        val s = createSession()
+        s.emitScroll(300)
+        s.loadUrl(url)
+        assertTrue(s.state.value.isAtTop)
+    }
+
+    @Test
+    fun spec008_ac1_reload_resetsIsAtTop() {
+        val s = createSession()
+        s.loadUrl(url)
+        s.emitPageFinished(url)
+        s.emitScroll(300)
+        s.reload()
+        assertTrue(s.state.value.isAtTop)
+    }
+
+    @Test
+    fun spec008_ac1_restoreState_resetsIsAtTop() {
+        val s = createSession()
+        s.loadUrl(url)
+        s.emitPageFinished(url)
+        val bytes = s.saveState()!!
+        s.emitScroll(300)
+        assertTrue(s.restoreState(bytes))
+        assertTrue(s.state.value.isAtTop)
+    }
+
+    @Test
+    fun spec008_ac1_pageStarted_resetsIsAtTop() {
+        val s = createSession()
+        s.emitScroll(300)
+        s.emitPageStarted("https://example.org/next")
+        assertTrue(s.state.value.isAtTop)
+    }
+
+    @Test
+    fun spec008_ac1_goBackAndGoForward_doNotChangeIsAtTop() {
+        val s = createSession()
+        val other = "https://example.org/other"
+        s.loadUrl(url)
+        s.emitPageFinished(url)
+        s.loadUrl(other)
+        s.emitPageFinished(other)
+        s.emitScroll(300)
+        s.goBack()
+        assertFalse(s.state.value.isAtTop)
+        s.emitScroll(0)
+        s.goForward()
+        assertTrue(s.state.value.isAtTop)
+    }
+
+    @Test
+    fun spec008_ac1_afterClose_scrollIsNoOp() {
+        val s = createSession()
+        s.close()
+        s.emitScroll(300)
+        assertTrue(s.state.value.isAtTop)
+    }
+
+    // --- Spec 008 AC2: topOverscroll ---
+
+    private fun <T> SharedFlow<T>.collectInto(sink: MutableList<T>): Job =
+        CoroutineScope(Dispatchers.Unconfined).launch { collect { sink += it } }
+
+    @Test
+    fun spec008_ac2_overscrollAtTop_emitsExactlyOnce() {
+        val s = createSession()
+        val got = mutableListOf<Unit>()
+        val job = s.topOverscroll.collectInto(got)
+        s.emitOverScrolled(scrollY = 0, clampedY = true)
+        job.cancel()
+        assertEquals(1, got.size)
+    }
+
+    @Test
+    fun spec008_ac2_notClamped_doesNotEmit() {
+        val s = createSession()
+        val got = mutableListOf<Unit>()
+        val job = s.topOverscroll.collectInto(got)
+        s.emitOverScrolled(scrollY = 0, clampedY = false)
+        job.cancel()
+        assertTrue(got.isEmpty())
+    }
+
+    @Test
+    fun spec008_ac2_clampedBelowTop_doesNotEmit() {
+        val s = createSession()
+        val got = mutableListOf<Unit>()
+        val job = s.topOverscroll.collectInto(got)
+        s.emitOverScrolled(scrollY = 500, clampedY = true)
+        job.cancel()
+        assertTrue(got.isEmpty())
+    }
+
+    @Test
+    fun spec008_ac2_lateCollector_doesNotReceiveEarlierEvent() {
+        val s = createSession()
+        s.emitOverScrolled(scrollY = 0, clampedY = true)
+        val got = mutableListOf<Unit>()
+        val job = s.topOverscroll.collectInto(got)
+        job.cancel()
+        assertTrue(got.isEmpty())
+    }
+
+    @Test
+    fun spec008_ac2_afterClose_doesNotEmit() {
+        val s = createSession()
+        val got = mutableListOf<Unit>()
+        val job = s.topOverscroll.collectInto(got)
+        s.close()
+        s.emitOverScrolled(scrollY = 0, clampedY = true)
+        job.cancel()
+        assertTrue(got.isEmpty())
     }
 }

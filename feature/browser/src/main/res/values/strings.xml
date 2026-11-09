@@ -25,6 +25,8 @@
     <string name="browser_scroll_bottom">Scroll to bottom</string>
     <string name="browser_edit_url">Edit address</string>
     <string name="browser_new_tab">New tab</string>
+    <string name="browser_previous_tab">Previous tab</string>
+    <string name="browser_next_tab">Next tab</string>
     <string name="browser_reload">Reload</string>
 
     <!-- Menu -->

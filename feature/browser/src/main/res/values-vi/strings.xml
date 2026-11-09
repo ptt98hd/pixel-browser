@@ -24,6 +24,8 @@
     <string name="browser_scroll_bottom">Cuộn xuống cuối trang</string>
     <string name="browser_edit_url">Sửa địa chỉ</string>
     <string name="browser_new_tab">Thẻ mới</string>
+    <string name="browser_previous_tab">Thẻ trước</string>
+    <string name="browser_next_tab">Thẻ sau</string>
     <string name="browser_reload">Tải lại</string>
 
     <!-- Menu -->

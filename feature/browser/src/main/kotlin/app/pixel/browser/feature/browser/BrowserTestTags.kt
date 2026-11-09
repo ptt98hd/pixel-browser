@@ -63,6 +63,14 @@ object BrowserTestTags {
     const val DOWNLOAD_CANCEL = "download_cancel"
     const val FULLSCREEN_CONTAINER = "fullscreen_container"
 
+    // Spec 008
+    const val BOTTOM_BAR = "bottom_bar"
+    const val EDGE_SWIPE_LEFT = "edge_swipe_left"
+    const val EDGE_SWIPE_RIGHT = "edge_swipe_right"
+    const val EDGE_SWIPE_INDICATOR = "edge_swipe_indicator"
+    const val BACK_GESTURE_INDICATOR = "back_gesture_indicator"
+    const val PULL_REFRESH_INDICATOR = "pull_refresh_indicator"
+
     fun tabItem(id: String): String = "tab_item_$id"
 
     fun tabClose(id: String): String = "tab_close_$id"

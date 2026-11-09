@@ -41,4 +41,6 @@ data class BrowserActions(
     val onUndoCloseTab: () -> Unit = {},
     /** Đóng tất cả tab (spec 009 AC17). */
     val onCloseAllTabs: () -> Unit = {},
+    /** Vuốt bottom bar / accessibility: đổi sang tab kề, -1 = trước, +1 = sau (spec 008 AC12–AC14). */
+    val onSelectAdjacentTab: (Int) -> Unit = {},
 )

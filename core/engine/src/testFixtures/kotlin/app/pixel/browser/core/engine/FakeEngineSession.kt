@@ -2,7 +2,9 @@ package app.pixel.browser.core.engine
 
 import android.graphics.Bitmap
 import android.view.View
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import java.io.ByteArrayInputStream
@@ -49,7 +51,14 @@ class FakeEngineSession : EngineSession {
         dialogGuard.onNewPage()
         _favicon.value = null
         _state.update {
-            it.copy(url = url, isLoading = true, progress = 0, error = null, securityState = SecurityState.Unknown)
+            it.copy(
+                url = url,
+                isLoading = true,
+                progress = 0,
+                error = null,
+                securityState = SecurityState.Unknown,
+                isAtTop = true,
+            )
         }
     }
 
@@ -81,7 +90,7 @@ class FakeEngineSession : EngineSession {
         cacheMode = CacheMode.Default
         sslErrorInLoad = false
         dialogGuard.onNewPage()
-        _state.update { it.copy(isLoading = true, progress = 0) }
+        _state.update { it.copy(isLoading = true, progress = 0, isAtTop = true) }
     }
 
     /** Fake không có view thật (spec 005). */
@@ -107,7 +116,7 @@ class FakeEngineSession : EngineSession {
         if (closed) return
         _favicon.value = null
         val security = if (sslErrorInLoad) SecurityState.Insecure else SecurityState.Unknown
-        _state.update { it.copy(url = url, isLoading = true, securityState = security) }
+        _state.update { it.copy(url = url, isLoading = true, securityState = security, isAtTop = true) }
     }
 
     override fun scrollToTop() {
@@ -153,6 +162,7 @@ class FakeEngineSession : EngineSession {
                 isLoading = true,
                 progress = 0,
                 error = null,
+                isAtTop = true,
                 canGoBack = index > 0,
                 canGoForward = index < history.lastIndex,
             )
@@ -376,6 +386,23 @@ class FakeEngineSession : EngineSession {
 
     private fun <T : EngineRequest> enqueueSimple(build: (Long) -> T) {
         requestQueue.enqueue(build) { request, response -> request.accepts(response) }
+    }
+
+    // --- Spec 008: cuộn / overscroll ---
+
+    private val _topOverscroll = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    override val topOverscroll: SharedFlow<Unit> = _topOverscroll
+
+    /** Như `onScrollChanged`: cập nhật `isAtTop = y == 0` (spec 008 AC1). */
+    fun simulateScroll(y: Int) {
+        if (closed) return
+        _state.update { it.copy(isAtTop = y == 0) }
+    }
+
+    /** Như `onOverScrolled(scrollY = 0, clampedY = true)` (spec 008 AC2). */
+    fun simulateOverscrollTop() {
+        if (closed) return
+        _topOverscroll.tryEmit(Unit)
     }
 
     // --- Spec 009: favicon ---
