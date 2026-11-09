@@ -44,6 +44,11 @@ class WebViewEngineSessionTest : EngineSessionContractTest() {
         dispatchPageFinished(url)
     }
 
+    override fun EngineSession.emitMainFrameError() = (this as WebViewEngineSession).dispatchMainFrameError()
+
+    override fun EngineSession.emitTitle(title: String) =
+        (this as WebViewEngineSession).chromeClient.onReceivedTitle(webView, title)
+
     override fun EngineSession.emitSslError() = (this as WebViewEngineSession).dispatchSslError()
 
     override fun EngineSession.emitPageStarted(url: String) = (this as WebViewEngineSession).dispatchPageStarted(url)

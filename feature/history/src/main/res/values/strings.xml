@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="history_title">History</string>
+    <string name="history_search_hint">Search history</string>
+    <string name="history_search_clear">Clear search</string>
+    <string name="history_close">Close</string>
+    <string name="history_clear_button">Clear browsing history</string>
+    <string name="history_today">Today</string>
+    <string name="history_yesterday">Yesterday</string>
+    <string name="history_empty_no_history">No history yet</string>
+    <string name="history_empty_no_match">No matching pages</string>
+    <string name="history_load_more">Load more</string>
+    <string name="history_menu_open_new_tab">Open in new tab</string>
+    <string name="history_menu_copy">Copy link</string>
+    <string name="history_menu_delete">Delete</string>
+    <string name="history_copied">Link copied</string>
+    <string name="history_clear_title">Clear history</string>
+    <string name="history_clear_last_hour">Last hour</string>
+    <string name="history_clear_last_day">Last 24 hours</string>
+    <string name="history_clear_last_week">Last 7 days</string>
+    <string name="history_clear_all">All time</string>
+    <string name="history_clear_confirm">Clear</string>
+    <string name="history_clear_cancel">Cancel</string>
+    <string name="history_item_more_actions">More actions</string>
+</resources>

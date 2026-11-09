@@ -12,6 +12,8 @@ import app.pixel.browser.core.engine.isSecureOrigin
 import app.pixel.browser.core.engine.isValidWebUrl
 import app.pixel.browser.core.engine.originOf
 import app.pixel.browser.core.engine.schemeOf
+import app.pixel.browser.core.history.PageVisit
+import app.pixel.browser.core.history.PageVisitRecorder
 import app.pixel.browser.core.omnibox.DefaultSuggestionProvider
 import app.pixel.browser.core.omnibox.OmniboxClassifier
 import app.pixel.browser.core.omnibox.OmniboxResult
@@ -91,6 +93,8 @@ class BrowserViewModel(
     val runtimePermissions: RuntimePermissionGate = RuntimePermissionGate { emptySet() },
     /** Thumbnail của tab cho tab switcher (spec 009). */
     private val thumbnails: TabThumbnailRepository = TabThumbnailRepository.None,
+    /** Ghi lịch sử khi trang tải xong (spec 012). */
+    private val pageVisits: PageVisitRecorder = PageVisitRecorder.None,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(BrowserUiState())
     val uiState: StateFlow<BrowserUiState> = _uiState.asStateFlow()
@@ -123,6 +127,7 @@ class BrowserViewModel(
     }
 
     private val externalApps = HashMap<EngineSession, ExternalAppState>()
+    private val visitJobs = HashMap<EngineSession, Job>()
 
     /**
      * Kế hoạch cho một `PermissionPrompt` (spec 007 AC16): [ask] là quyền chưa nhớ (hiện trong dialog),
@@ -251,6 +256,16 @@ class BrowserViewModel(
         recompute()
     }
 
+    /** Mở [url] ở tab mới và chọn nó (chỉ URL web hợp lệ; spec 012). */
+    fun onOpenUrlInNewTab(url: String) {
+        if (!isValidWebUrl(url)) return
+        stopEditing()
+        captureCurrentThumbnail()
+        exitFullscreen(current())
+        tabManager.openTab(url)
+        recompute()
+    }
+
     fun onSuggestionClick(suggestion: Suggestion) {
         navigate(suggestion.url)
         recompute()
@@ -293,7 +308,10 @@ class BrowserViewModel(
         exitFullscreen(current())
         val old = tabManager.tabs.value.map { it.id }
         tabManager.closeAllTabs()
-        old.forEach(thumbnails::remove)
+        old.forEach {
+            thumbnails.remove(it)
+            pageVisits.forgetTab(it)
+        }
         recompute()
     }
 
@@ -310,7 +328,7 @@ class BrowserViewModel(
 
     fun onCloseTab(id: String) {
         exitFullscreen(tabManager.session(id))
-        tabManager.closeTab(id)
+        closeAndForget(id)
         thumbnails.remove(id)
         recompute()
     }
@@ -359,7 +377,7 @@ class BrowserViewModel(
         if (id !in externalTabIds || current()?.state?.value?.canGoBack == true) return
         stopEditing()
         externalTabIds -= id
-        tabManager.closeTab(id)
+        closeAndForget(id)
         recompute()
     }
 
@@ -563,7 +581,7 @@ class BrowserViewModel(
         val target = popup?.let { tabManager.session(it.id) }
         if (popup == null || target == null || !opener.respond(request.id, EngineResponse.AttachWindow(target))) {
             // Engine không nhận session mới làm đích: bỏ tab popup, quay về opener.
-            popup?.let { tabManager.closeTab(it.id) }
+            popup?.let { closeAndForget(it.id) }
             tabManager.selectTab(openerId)
             opener.respond(request.id, EngineResponse.Dismiss())
             return
@@ -582,7 +600,7 @@ class BrowserViewModel(
         val openerId = popupOpeners.remove(tabId) ?: return
         val wasSelected = tabId == tabManager.selectedTabId.value
         exitFullscreen(session)
-        tabManager.closeTab(tabId)
+        closeAndForget(tabId)
         if (wasSelected && tabManager.session(openerId) != null) tabManager.selectTab(openerId)
     }
 
@@ -758,6 +776,11 @@ class BrowserViewModel(
         suggestionJob = null
     }
 
+    private fun closeAndForget(id: String) {
+        tabManager.closeTab(id)
+        pageVisits.forgetTab(id)
+    }
+
     /** Theo dõi `state` của mọi session sống (title trong tab switcher, chrome của tab được chọn). */
     private fun observeSessions() {
         val sessions = tabManager.tabs.value.mapNotNull { tabManager.session(it.id) }
@@ -766,6 +789,7 @@ class BrowserViewModel(
         observedSessions = sessions
         externalApps.keys.retainAll(sessions.toSet())
         permissionPlans.keys.retainAll(sessions.toSet())
+        observePageVisits(sessions)
         sessionsJob?.cancel()
         sessionsJob =
             viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -774,6 +798,21 @@ class BrowserViewModel(
                     merge(*flows.toTypedArray()).collect { recompute() }
                 }
             }
+    }
+
+    /** Mỗi session sống có một collector `pageFinished` → ghi lịch sử theo id/ẩn danh của tab sở hữu (spec 012). */
+    private fun observePageVisits(sessions: List<EngineSession>) {
+        visitJobs.keys.filter { it !in sessions }.forEach { visitJobs.remove(it)?.cancel() }
+        for (tab in tabManager.tabs.value) {
+            val session = tabManager.session(tab.id) ?: continue
+            if (session in visitJobs) continue
+            visitJobs[session] =
+                viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                    session.pageFinished.collect {
+                        pageVisits.record(PageVisit(tab.id, it.url, it.title, tab.isPrivate, it.isError))
+                    }
+                }
+        }
     }
 
     /**

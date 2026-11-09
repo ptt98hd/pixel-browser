@@ -19,7 +19,9 @@ import android.webkit.PermissionRequest
 import android.webkit.SslErrorHandler
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -45,6 +47,7 @@ class WebViewEngineSession(
 
     /** Đã có lỗi SSL kể từ lần tải xong trước / điều hướng tường minh gần nhất (spec 005). */
     private var sslErrorInLoad = false
+    private var mainFrameErrorInLoad = false
 
     private val dialogGuard = JsDialogGuard()
 
@@ -89,6 +92,22 @@ class WebViewEngineSession(
                     url: String,
                     isReload: Boolean,
                 ) = syncHistory()
+
+                override fun onReceivedError(
+                    view: WebView,
+                    request: WebResourceRequest,
+                    error: WebResourceError,
+                ) {
+                    if (request.isForMainFrame) dispatchMainFrameError()
+                }
+
+                override fun onReceivedHttpError(
+                    view: WebView,
+                    request: WebResourceRequest,
+                    errorResponse: WebResourceResponse,
+                ) {
+                    if (request.isForMainFrame && errorResponse.statusCode >= HTTP_ERROR_MIN) dispatchMainFrameError()
+                }
 
                 override fun onReceivedSslError(
                     view: WebView,
@@ -241,6 +260,7 @@ class WebViewEngineSession(
             return
         }
         sslErrorInLoad = false
+        mainFrameErrorInLoad = false
         dialogGuard.onNewPage()
         _favicon.value = null
         _state.update {
@@ -260,6 +280,7 @@ class WebViewEngineSession(
     override fun goBack() {
         if (isClosed || !webView.canGoBack()) return
         sslErrorInLoad = false
+        mainFrameErrorInLoad = false
         webView.settings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
         webView.goBack()
     }
@@ -267,6 +288,7 @@ class WebViewEngineSession(
     override fun goForward() {
         if (isClosed || !webView.canGoForward()) return
         sslErrorInLoad = false
+        mainFrameErrorInLoad = false
         webView.settings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
         webView.goForward()
     }
@@ -274,6 +296,7 @@ class WebViewEngineSession(
     override fun reload() {
         if (isClosed) return
         sslErrorInLoad = false
+        mainFrameErrorInLoad = false
         dialogGuard.onNewPage()
         _state.update { it.copy(isLoading = true, progress = 0, isAtTop = true) }
         webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
@@ -381,10 +404,11 @@ class WebViewEngineSession(
     // Điểm vào của callback WebView; internal để test mô phỏng.
     fun dispatchPageStarted(url: String) {
         if (isClosed) return
+        mainFrameErrorInLoad = false
         dialogGuard.onNewPage()
         _favicon.value = null
         val security = if (sslErrorInLoad) SecurityState.Insecure else SecurityState.Unknown
-        _state.update { it.copy(url = url, isLoading = true, securityState = security, isAtTop = true) }
+        _state.update { it.copy(url = url, title = "", isLoading = true, securityState = security, isAtTop = true) }
     }
 
     fun dispatchPageFinished(url: String) {
@@ -392,9 +416,20 @@ class WebViewEngineSession(
         // Cache-first chỉ áp dụng cho chính điều hướng lịch sử; điều hướng sau đó (vd. bấm link) dùng mặc định.
         webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
         val security = securityStateOnFinish(url, sslErrorInLoad)
+        val isError = mainFrameErrorInLoad || sslErrorInLoad
         sslErrorInLoad = false
         _state.update { it.copy(url = url, isLoading = false, progress = 100, securityState = security) }
         syncHistory()
+        _pageFinished.tryEmit(PageFinished(url, _state.value.title, isError))
+    }
+
+    private val _pageFinished = MutableSharedFlow<PageFinished>(extraBufferCapacity = 8)
+    override val pageFinished: SharedFlow<PageFinished> = _pageFinished
+
+    /** Spec 012: main frame lỗi mạng/HTTP >= 400. */
+    fun dispatchMainFrameError() {
+        if (isClosed) return
+        mainFrameErrorInLoad = true
     }
 
     fun dispatchProgress(progress: Int) {
@@ -683,6 +718,7 @@ class WebViewEngineSession(
     }
 
     private companion object {
+        const val HTTP_ERROR_MIN = 400
         const val STATE_MAGIC = 0x50585753 // "PXWS"
 
         /** Resource media được hỗ trợ; MIDI/Protected media bị từ chối (spec 007 AC4). */

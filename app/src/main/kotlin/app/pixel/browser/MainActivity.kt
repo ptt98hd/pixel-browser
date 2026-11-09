@@ -13,12 +13,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.hideFromAccessibility
+import androidx.compose.ui.semantics.semantics
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import app.pixel.browser.core.data.ThemeSettings
 import app.pixel.browser.core.engine.WebViewEngineSession
+import app.pixel.browser.core.history.HistoryClearer
 import app.pixel.browser.core.tabs.TabManager
 import app.pixel.browser.core.ui.PixelTheme
 import app.pixel.browser.core.ui.resolveDarkTheme
@@ -29,6 +36,8 @@ import app.pixel.browser.feature.browser.intent.IncomingIntent
 import app.pixel.browser.feature.browser.intent.IncomingIntentResolver
 import app.pixel.browser.feature.browser.intent.from
 import app.pixel.browser.feature.browser.web.AndroidRuntimePermissionGate
+import app.pixel.browser.feature.history.HistoryRoute
+import app.pixel.browser.feature.history.HistoryViewModel
 import app.pixel.browser.feature.home.AndroidBackgroundImageImporter
 import app.pixel.browser.feature.home.HomeRoute
 import app.pixel.browser.feature.home.HomeViewModel
@@ -59,6 +68,8 @@ class MainActivity : ComponentActivity() {
                     // Gate giữ application context; Activity chỉ gắn launcher xin quyền (xem onCreate).
                     runtimePermissions = AndroidRuntimePermissionGate(appContext),
                     thumbnails = appContext.thumbnails,
+                    suggestionProvider = appContext.suggestionProvider,
+                    pageVisits = appContext.historyRecorder,
                 )
             }
         }
@@ -86,6 +97,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Màn hình Lịch sử (lớp phủ); ViewModel cấp Activity nên giữ truy vấn khi xoay (spec 012). */
+    private val historyViewModel: HistoryViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                val appContext = app
+                HistoryViewModel(
+                    appContext.historyStore,
+                    HistoryClearer(appContext.historyStore, System::currentTimeMillis),
+                )
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -96,8 +120,19 @@ class MainActivity : ComponentActivity() {
             val settings by app.themeSettings.collectAsState()
             PixelTheme(settings) {
                 SystemBarsEffect(dark = resolveDarkTheme(settings.mode, isSystemInDarkTheme()))
+                // Điều hướng cấp app: màn hình phụ là lớp phủ trên BrowserRoute (spec 012), sống qua xoay màn hình.
+                var destination by rememberSaveable { mutableStateOf(AppDestination.Browser) }
                 BrowserRoute(
                     viewModel,
+                    // Nội dung dưới lớp phủ không được TalkBack đọc/focus.
+                    modifier =
+                        if (destination != AppDestination.Browser) {
+                            Modifier.semantics { hideFromAccessibility() }
+                        } else {
+                            Modifier
+                        },
+                    overlayOpen = destination != AppDestination.Browser,
+                    onOpenHistory = { destination = AppDestination.History },
                     onReturnToCaller = { moveTaskToBack(true) },
                     themeSettings = settings,
                     thumbnails = app.thumbnails,
@@ -110,6 +145,20 @@ class MainActivity : ComponentActivity() {
                         )
                     },
                 )
+                if (destination == AppDestination.History) {
+                    HistoryRoute(
+                        historyViewModel,
+                        onOpenUrl = {
+                            destination = AppDestination.Browser
+                            viewModel.onOpenUrl(it)
+                        },
+                        onOpenInNewTab = {
+                            destination = AppDestination.Browser
+                            viewModel.onOpenUrlInNewTab(it)
+                        },
+                        onClose = { destination = AppDestination.Browser },
+                    )
+                }
             }
         }
         // Spec 006 AC16: intent chỉ xử lý ở lần tạo đầu; recreate (xoay, process death) không xử lý lại.

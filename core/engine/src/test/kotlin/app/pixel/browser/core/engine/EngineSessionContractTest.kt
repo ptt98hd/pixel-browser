@@ -25,6 +25,12 @@ abstract class EngineSessionContractTest {
     /** Mô phỏng engine tải xong [url] (đã vào lịch sử). */
     protected abstract fun EngineSession.emitPageFinished(url: String)
 
+    /** Mô phỏng lỗi main-frame (mạng/HTTP >= 400) – spec 012. */
+    protected abstract fun EngineSession.emitMainFrameError()
+
+    /** Mô phỏng `onReceivedTitle` – spec 012. */
+    protected abstract fun EngineSession.emitTitle(title: String)
+
     /** Mô phỏng lỗi SSL. */
     protected abstract fun EngineSession.emitSslError()
 
@@ -939,5 +945,112 @@ abstract class EngineSessionContractTest {
         s.emitOverScrolled(scrollY = 0, clampedY = true)
         job.cancel()
         assertTrue(got.isEmpty())
+    }
+
+    // --- Spec 012 AC6: pageFinished ---
+
+    private fun <T> SharedFlow<T>.collectAll(sink: MutableList<T>): Job =
+        CoroutineScope(Dispatchers.Unconfined).launch { collect { sink += it } }
+
+    @Test
+    fun spec012_ac6_pageFinished_emitsExactlyOneEventPerFinish_withUrlTitleAndNoError() {
+        val s = createSession()
+        val got = mutableListOf<PageFinished>()
+        val job = s.pageFinished.collectAll(got)
+        s.loadUrl("https://a.com/")
+        s.emitTitle("A")
+        s.emitPageFinished("https://a.com/")
+        job.cancel()
+        assertEquals(listOf(PageFinished("https://a.com/", "A", isError = false)), got)
+    }
+
+    @Test
+    fun spec012_ac6_pageFinished_emitsOncePerFinish_acrossTwoLoads() {
+        val s = createSession()
+        val got = mutableListOf<PageFinished>()
+        val job = s.pageFinished.collectAll(got)
+        s.loadUrl("https://a.com/")
+        s.emitPageFinished("https://a.com/")
+        s.loadUrl("https://b.com/")
+        s.emitPageFinished("https://b.com/")
+        job.cancel()
+        assertEquals(listOf("https://a.com/", "https://b.com/"), got.map { it.url })
+    }
+
+    @Test
+    fun spec012_ac6_mainFrameError_thenFinish_isError_andNextLoadIsClean() {
+        val s = createSession()
+        val got = mutableListOf<PageFinished>()
+        val job = s.pageFinished.collectAll(got)
+        s.loadUrl("https://a.com/")
+        s.emitMainFrameError()
+        s.emitPageFinished("https://a.com/")
+        s.loadUrl("https://b.com/")
+        s.emitPageFinished("https://b.com/")
+        job.cancel()
+        assertEquals(listOf(true, false), got.map { it.isError })
+    }
+
+    @Test
+    fun spec012_ac6_sslError_thenFinish_isError() {
+        val s = createSession()
+        val got = mutableListOf<PageFinished>()
+        val job = s.pageFinished.collectAll(got)
+        s.loadUrl("https://a.com/")
+        s.emitSslError()
+        s.emitPageFinished("https://a.com/")
+        job.cancel()
+        assertEquals(listOf(true), got.map { it.isError })
+    }
+
+    @Test
+    fun spec012_ac6_afterClose_doesNotEmit() {
+        val s = createSession()
+        val got = mutableListOf<PageFinished>()
+        val job = s.pageFinished.collectAll(got)
+        s.close()
+        s.emitPageFinished("https://a.com/")
+        job.cancel()
+        assertTrue(got.isEmpty())
+    }
+
+    @Test
+    fun spec012_ac6_lateCollector_doesNotReceiveEarlierEvent() {
+        val s = createSession()
+        s.loadUrl("https://a.com/")
+        s.emitPageFinished("https://a.com/")
+        val got = mutableListOf<PageFinished>()
+        val job = s.pageFinished.collectAll(got)
+        job.cancel()
+        assertTrue(got.isEmpty())
+    }
+
+    @Test
+    fun spec012_mainFrameError_survivesFinish_untilNextLoad() {
+        val s = createSession()
+        val got = mutableListOf<PageFinished>()
+        val job = s.pageFinished.collectAll(got)
+        s.loadUrl("https://a.com/")
+        s.emitMainFrameError()
+        s.emitPageFinished("https://a.com/")
+        s.emitPageFinished("https://a.com/")
+        s.loadUrl("https://b.com/")
+        s.emitPageFinished("https://b.com/")
+        job.cancel()
+        assertEquals(listOf(true, true, false), got.map { it.isError })
+    }
+
+    @Test
+    fun spec012_pageStarted_clearsPreviousTitle() {
+        val s = createSession()
+        s.loadUrl("https://a.com/")
+        s.emitTitle("Old title")
+        s.emitPageStarted("https://b.com/")
+        assertEquals("", s.state.value.title)
+        val got = mutableListOf<PageFinished>()
+        val job = s.pageFinished.collectAll(got)
+        s.emitPageFinished("https://b.com/")
+        job.cancel()
+        assertEquals("", got.single().title)
     }
 }

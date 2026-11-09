@@ -15,6 +15,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -229,17 +230,22 @@ private fun SuggestionList(
                         .testTag(BrowserTestTags.suggestion(index)),
                 contentAlignment = Alignment.CenterStart,
             ) {
-                Text(
-                    text = suggestionLabel(suggestion, query),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    suggestionIcon(suggestion.kind)?.let {
+                        Icon(it, contentDescription = null, modifier = Modifier.padding(end = 12.dp).size(20.dp))
+                    }
+                    Text(
+                        text = suggestionLabel(suggestion, query),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }
 }
 
-/** Nhãn hiển thị: GoTo → URL; Search → chuỗi resource với truy vấn đang gõ (title của provider là tiếng Anh). */
+/** Nhãn hiển thị: GoTo → URL; History/Bookmark → title (rỗng → URL); Search → chuỗi resource với truy vấn đang gõ (title của provider là tiếng Anh). */
 @Composable
 private fun suggestionLabel(
     suggestion: Suggestion,
@@ -248,4 +254,12 @@ private fun suggestionLabel(
     when (suggestion.kind) {
         SuggestionKind.GoTo -> suggestion.url
         SuggestionKind.Search -> stringResource(R.string.browser_suggestion_search, query)
+        SuggestionKind.History, SuggestionKind.Bookmark -> suggestion.title.ifBlank { suggestion.url }
+    }
+
+private fun suggestionIcon(kind: SuggestionKind): ImageVector? =
+    when (kind) {
+        SuggestionKind.History -> HistoryIcon
+        SuggestionKind.Bookmark -> Icons.Filled.Star
+        SuggestionKind.GoTo, SuggestionKind.Search -> null
     }

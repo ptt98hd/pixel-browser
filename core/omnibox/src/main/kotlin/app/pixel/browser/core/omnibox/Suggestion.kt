@@ -8,7 +8,7 @@ data class Suggestion(
     val url: String,
 )
 
-enum class SuggestionKind { GoTo, Search }
+enum class SuggestionKind { GoTo, Search, History, Bookmark }
 
 fun interface SuggestionProvider {
     suspend fun suggest(input: String): List<Suggestion>

@@ -12,11 +12,23 @@ import app.pixel.browser.core.data.createSettingsDataStore
 import app.pixel.browser.core.data.home.FileHomeConfigStore
 import app.pixel.browser.core.data.home.HomeConfigStore
 import app.pixel.browser.core.data.home.HomeFiles
+import app.pixel.browser.core.history.HistoryRecorder
+import app.pixel.browser.core.history.HistoryRetention
+import app.pixel.browser.core.history.HistoryStore
+import app.pixel.browser.core.history.HistorySuggestionProvider
+import app.pixel.browser.core.history.PageVisitRecorder
+import app.pixel.browser.core.history.RoomHistoryStore
+import app.pixel.browser.core.history.createHistoryDatabase
+import app.pixel.browser.core.omnibox.DefaultSuggestionProvider
+import app.pixel.browser.core.omnibox.SearchEngines
+import app.pixel.browser.core.omnibox.SuggestionAggregator
+import app.pixel.browser.core.omnibox.SuggestionProvider
 import app.pixel.browser.core.tabs.FileTabSnapshotStore
 import app.pixel.browser.core.tabs.TabSnapshotStore
 import app.pixel.browser.core.ui.NightModeController
 import app.pixel.browser.core.ui.UiModeNightModeController
 import app.pixel.browser.feature.browser.tabs.BitmapTabThumbnailRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,6 +40,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.TimeUnit
 
 /** Phụ thuộc cấp process (DI thủ công tới khi có Hilt). */
 class PixelBrowserApplication : Application() {
@@ -51,6 +64,48 @@ class PixelBrowserApplication : Application() {
         BitmapTabThumbnailRepository(File(cacheDir, "thumbnails"), Dispatchers.IO)
     }
 
+    /** Spec 012: kho lịch sử (`history.db`); gắn qua [bindHistoryStore]. */
+    lateinit var historyStore: HistoryStore
+        private set
+
+    /** Spec 012: bộ ghi lịch sử dùng chung cho mọi tab; dựng lại mỗi lần [bindHistoryStore]. */
+    lateinit var historyRecorder: PageVisitRecorder
+        private set
+
+    /**
+     * Spec 012: gắn [store] làm [historyStore] (+ [historyRecorder] mới trên [scope]) và dọn lịch sử
+     * (`prune`) một lần trên [scope]. `onCreate` gọi với Room + [ioScope]; test gọi lại với `InMemoryHistoryStore`
+     * (cùng kiểu với [bindThemeStore]).
+     */
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    fun bindHistoryStore(
+        store: HistoryStore,
+        scope: CoroutineScope = ioScope,
+    ) {
+        historyStore = store
+        historyRecorder = HistoryRecorder(store, scope)
+        scope.launch {
+            try {
+                val cutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(HistoryRetention.MAX_AGE_DAYS.toLong())
+                store.prune(HistoryRetention.MAX_ENTRIES, cutoff)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Dọn lịch sử thất bại", e)
+            }
+        }
+    }
+
+    /** Gợi ý omnibox: mặc định (Go to/Search) rồi lịch sử (spec 012; bookmark thêm ở spec 013). */
+    val suggestionProvider: SuggestionProvider
+        get() =
+            SuggestionAggregator(
+                listOf(
+                    DefaultSuggestionProvider(SearchEngines.Default),
+                    HistorySuggestionProvider(historyStore, System::currentTimeMillis),
+                ),
+            )
+
     private val themeLock = Any()
     private var themeBinding: ThemeBinding? = null
 
@@ -71,6 +126,7 @@ class PixelBrowserApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         nightModeController = UiModeNightModeController(this)
+        bindHistoryStore(RoomHistoryStore(createHistoryDatabase(this)), ioScope)
         // Một DataStore cho file `settings` trong cả process (DataStore cấm hai instance cùng file).
         val settingsDataStore =
             createSettingsDataStore(CoroutineScope(SupervisorJob() + Dispatchers.IO)) {

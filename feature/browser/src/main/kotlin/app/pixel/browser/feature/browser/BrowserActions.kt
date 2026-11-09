@@ -43,4 +43,6 @@ data class BrowserActions(
     val onCloseAllTabs: () -> Unit = {},
     /** Vuốt bottom bar / accessibility: đổi sang tab kề, -1 = trước, +1 = sau (spec 008 AC12–AC14). */
     val onSelectAdjacentTab: (Int) -> Unit = {},
+    /** Mở màn hình Lịch sử (spec 012). */
+    val onOpenHistory: () -> Unit = {},
 )

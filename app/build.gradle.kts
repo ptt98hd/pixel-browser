@@ -58,6 +58,8 @@ android {
 dependencies {
     implementation(project(":feature:browser"))
     implementation(project(":feature:home"))
+    implementation(project(":feature:history"))
+    implementation(project(":core:history"))
     implementation(project(":core:ui"))
     implementation(project(":core:data"))
     implementation(platform(libs.compose.bom))
@@ -69,6 +71,7 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(testFixtures(project(":core:data")))
+    testImplementation(testFixtures(project(":core:history")))
     testImplementation(platform(libs.compose.bom))
     testImplementation(libs.compose.ui.test.junit4)
     debugImplementation(libs.compose.ui.test.manifest)

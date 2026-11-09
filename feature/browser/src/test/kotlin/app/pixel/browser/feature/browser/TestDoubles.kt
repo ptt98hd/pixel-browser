@@ -2,6 +2,8 @@ package app.pixel.browser.feature.browser
 
 import app.pixel.browser.core.engine.EngineSession
 import app.pixel.browser.core.engine.FakeEngineSession
+import app.pixel.browser.core.history.PageVisit
+import app.pixel.browser.core.history.PageVisitRecorder
 import app.pixel.browser.core.tabs.EngineSessionFactory
 import app.pixel.browser.core.tabs.TabManager
 import app.pixel.browser.core.tabs.TabSnapshot
@@ -180,6 +182,20 @@ class FakeTabThumbnailRepository : TabThumbnailRepository {
     }
 }
 
+/** [PageVisitRecorder] giả (spec 012): ghi lại mọi lời gọi theo thứ tự. */
+class FakePageVisitRecorder : PageVisitRecorder {
+    val visits = mutableListOf<PageVisit>()
+    val forgotten = mutableListOf<String>()
+
+    override fun record(visit: PageVisit) {
+        visits += visit
+    }
+
+    override fun forgetTab(tabId: String) {
+        forgotten += tabId
+    }
+}
+
 /** Môi trường chung: TabManager thật + SpySession + ViewModel. */
 class BrowserFixture(
     store: InMemoryStore = InMemoryStore(),
@@ -188,9 +204,11 @@ class BrowserFixture(
     val permissionMemory: SitePermissionMemory = SitePermissionMemory(),
     val gate: FakePermissionGate = FakePermissionGate(),
     val thumbnails: TabThumbnailRepository = TabThumbnailRepository.None,
+    val pageVisits: PageVisitRecorder = PageVisitRecorder.None,
+    maxLiveSessions: Int = TabManager.DEFAULT_MAX_LIVE_SESSIONS,
 ) {
     val factory = SpySessionFactory()
-    val tabManager = TabManager(factory, store)
+    val tabManager = TabManager(factory, store, maxLiveSessions)
 
     // Nối FakeTabThumbnailRepository với tab đang chọn trước khi ViewModel được tạo.
     @Suppress("unused")
@@ -204,6 +222,7 @@ class BrowserFixture(
             permissionMemory = permissionMemory,
             runtimePermissions = gate,
             thumbnails = thumbnails,
+            pageVisits = pageVisits,
         )
 
     fun selected(): SpySession = tabManager.selectedSpy()
@@ -222,13 +241,21 @@ class BrowserFixture(
             url: String,
             launcher: RecordingLauncher = RecordingLauncher(),
             thumbnails: TabThumbnailRepository = TabThumbnailRepository.None,
+            pageVisits: PageVisitRecorder = PageVisitRecorder.None,
+            maxLiveSessions: Int = TabManager.DEFAULT_MAX_LIVE_SESSIONS,
         ): BrowserFixture {
             val store =
                 InMemoryStore().apply {
                     stored =
                         TabsSnapshot(listOf(TabSnapshot(PAGE_TAB_ID, url)), PAGE_TAB_ID)
                 }
-            return BrowserFixture(store, launcher, thumbnails = thumbnails).apply {
+            return BrowserFixture(
+                store,
+                launcher,
+                thumbnails = thumbnails,
+                pageVisits = pageVisits,
+                maxLiveSessions = maxLiveSessions,
+            ).apply {
                 selected().fake.simulatePageFinished(url)
                 selected().resetCalls()
             }
