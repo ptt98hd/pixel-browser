@@ -13,7 +13,7 @@ Trạng thái: ⬜ chưa làm · 🟨 đang làm · ✅ xong. Mỗi feature có 
 | A05 | Top bar: thanh URL + nút scan QR, hiển thị domain/SSL, progress (QR: C06) | ✅ |
 | A06 | Bottom bar 5 nút: back / forward / home / tabs / menu | ✅ |
 | A07 | Long-press: back→lên đầu, forward→xuống cuối, home→focus URL, tabs→tab mới, menu→refresh | ✅ |
-| A08 | Cử chỉ vuốt (vuốt cạnh = back/forward, vuốt bottom bar = đổi tab, pull-to-refresh) | 🟨 |
+| A08 | Cử chỉ vuốt (vuốt cạnh = back/forward, vuốt bottom bar = đổi tab, pull-to-refresh) | ✅ |
 | A09 | Tab switcher (lưới, thumbnail, đóng bằng vuốt, tab mới) | ✅ |
 | A10 | Home page chỉnh được (shortcut, ảnh nền, ô tìm kiếm, sắp xếp) (WebView lười cho tab home: E05) | ✅ |
 | A11 | File chooser, camera/mic/location permission prompts, fullscreen video, window.open/popup, JS dialogs, HTTP auth | ✅ |
@@ -66,7 +66,7 @@ Trạng thái: ⬜ chưa làm · 🟨 đang làm · ✅ xong. Mỗi feature có 
 | E02 | Keystore release cố định + workflow release ký APK, verify bằng apksigner, cài thử emulator | ✅ |
 | E03 | Split ABI + universal APK, versionCode theo tag | ⬜ |
 | E04 | Metadata F-Droid (fastlane, flavor fdroid không có thư viện non-free), reproducible build | ⬜ |
-| E05 | Hiệu năng (startup, memory nhiều tab), crash-safe, không telemetry; WebView lười cho tab home (không tạo WebView khi chưa có trang, spec 010) | ⬜ |
+| E05 | Hiệu năng (startup, memory nhiều tab), crash-safe, không telemetry; WebView lười cho tab home (không tạo WebView khi chưa có trang, spec 010); PullToRefreshInstrumentedTest + kiểm chứng predictive back/overscroll trên máy thật (spec 008) | ⬜ |
 | E06 | Docs: README, CONTRIBUTING, PRIVACY, changelog tự sinh | ⬜ |
 
 ## Milestone → feature

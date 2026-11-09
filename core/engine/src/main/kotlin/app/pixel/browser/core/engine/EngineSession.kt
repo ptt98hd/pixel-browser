@@ -2,6 +2,7 @@ package app.pixel.browser.core.engine
 
 import android.graphics.Bitmap
 import android.view.View
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
 enum class SecurityState { Unknown, Secure, Insecure }
@@ -25,6 +26,8 @@ data class EngineState(
     val error: String? = null,
     /** Trang đang hiển thị video toàn màn hình (spec 007 AC8). */
     val isFullscreen: Boolean = false,
+    /** scrollY của root == 0; true khi bắt đầu tải trang mới (spec 008 AC1). */
+    val isAtTop: Boolean = true,
 )
 
 /** Một phiên duyệt web (tương ứng một tab) che engine bên dưới để logic test được trên JVM. */
@@ -91,6 +94,9 @@ interface EngineSession {
 
     /** Favicon của trang hiện tại; null khi chưa có. Reset về null khi bắt đầu tải trang main-frame mới (spec 009). */
     val favicon: StateFlow<Bitmap?>
+
+    /** Phát mỗi lần root scroller bị kéo quá đỉnh (overscroll dọc ở scrollY == 0). Không replay (spec 008 AC2). */
+    val topOverscroll: SharedFlow<Unit>
 }
 
 fun isValidWebUrl(url: String): Boolean {

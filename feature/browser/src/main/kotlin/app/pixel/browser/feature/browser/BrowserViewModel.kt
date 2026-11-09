@@ -266,6 +266,14 @@ class BrowserViewModel(
         recompute()
     }
 
+    /** Spec 008 AC13: đổi sang tab kề (-1 trước, +1 sau); no-op ngoài biên. */
+    fun onSelectAdjacentTab(delta: Int) {
+        val ids = tabManager.tabs.value.map { it.id }
+        val index = ids.indexOf(tabManager.selectedTabId.value)
+        if (index < 0) return
+        onSelectTab(ids.getOrNull(index + delta) ?: return)
+    }
+
     /** Spec 009 AC8: chụp thumbnail tab hiện tại trước khi mở switcher. */
     fun onOpenTabSwitcher() {
         stopEditing()

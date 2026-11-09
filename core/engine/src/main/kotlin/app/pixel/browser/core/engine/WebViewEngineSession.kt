@@ -23,7 +23,9 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 
@@ -31,7 +33,8 @@ import kotlinx.coroutines.flow.update
 class WebViewEngineSession(
     context: Context,
 ) : EngineSession {
-    val webView: WebView = WebView(context)
+    private val pixel = PixelWebView(context)
+    val webView: WebView = pixel
     private val _state = MutableStateFlow(EngineState())
     override val state: StateFlow<EngineState> = _state
 
@@ -55,6 +58,7 @@ class WebViewEngineSession(
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
 
     init {
+        pixel.owner = this
         configure(webView.settings)
         webView.webViewClient =
             object : WebViewClient() {
@@ -240,7 +244,14 @@ class WebViewEngineSession(
         dialogGuard.onNewPage()
         _favicon.value = null
         _state.update {
-            it.copy(url = url, isLoading = true, progress = 0, error = null, securityState = SecurityState.Unknown)
+            it.copy(
+                url = url,
+                isLoading = true,
+                progress = 0,
+                error = null,
+                securityState = SecurityState.Unknown,
+                isAtTop = true,
+            )
         }
         webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
         webView.loadUrl(url)
@@ -264,7 +275,7 @@ class WebViewEngineSession(
         if (isClosed) return
         sslErrorInLoad = false
         dialogGuard.onNewPage()
-        _state.update { it.copy(isLoading = true, progress = 0) }
+        _state.update { it.copy(isLoading = true, progress = 0, isAtTop = true) }
         webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
         webView.reload()
     }
@@ -339,6 +350,7 @@ class WebViewEngineSession(
                 progress = 0,
                 error = null,
                 securityState = SecurityState.Unknown,
+                isAtTop = true,
                 canGoBack = webView.canGoBack(),
                 canGoForward = webView.canGoForward(),
             )
@@ -362,6 +374,7 @@ class WebViewEngineSession(
         webView.webViewClient = WebViewClient()
         webView.webChromeClient = null
         webView.setDownloadListener(null)
+        pixel.owner = null
         webView.destroy()
     }
 
@@ -371,7 +384,7 @@ class WebViewEngineSession(
         dialogGuard.onNewPage()
         _favicon.value = null
         val security = if (sslErrorInLoad) SecurityState.Insecure else SecurityState.Unknown
-        _state.update { it.copy(url = url, isLoading = true, securityState = security) }
+        _state.update { it.copy(url = url, isLoading = true, securityState = security, isAtTop = true) }
     }
 
     fun dispatchPageFinished(url: String) {
@@ -496,6 +509,27 @@ class WebViewEngineSession(
             },
         )
         return true
+    }
+
+    // --- Spec 008: cuộn / overscroll ---
+
+    private val _topOverscroll = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    override val topOverscroll: SharedFlow<Unit> = _topOverscroll
+
+    /** Điểm vào của `onScrollChanged` (spec 008 AC1). */
+    fun dispatchScrollChanged(scrollY: Int) {
+        if (isClosed) return
+        val atTop = scrollY == 0
+        _state.update { if (it.isAtTop == atTop) it else it.copy(isAtTop = atTop) }
+    }
+
+    /** Điểm vào của `onOverScrolled` (spec 008 AC2). */
+    fun dispatchOverScrolled(
+        scrollY: Int,
+        clampedY: Boolean,
+    ) {
+        if (isClosed) return
+        if (clampedY && scrollY == 0) _topOverscroll.tryEmit(Unit)
     }
 
     // --- Spec 009: favicon ---

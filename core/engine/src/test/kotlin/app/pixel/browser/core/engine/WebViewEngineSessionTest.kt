@@ -9,7 +9,11 @@ import android.view.View
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
+import android.webkit.WebView
 import android.widget.FrameLayout
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -50,6 +54,15 @@ class WebViewEngineSessionTest : EngineSessionContractTest() {
         hasGesture: Boolean,
         isRedirect: Boolean,
     ): Boolean = (this as WebViewEngineSession).dispatchNavigation(url, isMainFrame, hasGesture, isRedirect)
+
+    // --- Spec 008 hooks ---
+
+    override fun EngineSession.emitScroll(y: Int) = (this as WebViewEngineSession).dispatchScrollChanged(y)
+
+    override fun EngineSession.emitOverScrolled(
+        scrollY: Int,
+        clampedY: Boolean,
+    ) = (this as WebViewEngineSession).dispatchOverScrolled(scrollY, clampedY)
 
     // --- Spec 007 hooks ---
 
@@ -169,5 +182,83 @@ class WebViewEngineSessionTest : EngineSessionContractTest() {
         assertNull(s.webView.parent)
         assertEquals(0, parent.childCount)
         assertSame(context.applicationContext, wrapper.baseContext)
+    }
+
+    // --- Spec 008: PixelWebView nối callback của View với dispatch* ---
+
+    @Test
+    fun spec008_webView_isPixelWebView() {
+        assertTrue(WebViewEngineSession(context).webView is PixelWebView)
+    }
+
+    @Test
+    fun spec008_pixelWebView_onScrollChanged_forwardsToIsAtTop() {
+        val s = WebViewEngineSession(context)
+        s.webView.scrollTo(0, 300)
+        assertFalse(s.state.value.isAtTop)
+        s.webView.scrollTo(0, 0)
+        assertTrue(s.state.value.isAtTop)
+    }
+
+    @Test
+    fun spec008_pixelWebView_onOverScrolled_atTopClamped_emitsTopOverscroll() {
+        val s = WebViewEngineSession(context)
+        val got = mutableListOf<Unit>()
+        val job = CoroutineScope(Dispatchers.Unconfined).launch { s.topOverscroll.collect { got += it } }
+        val m =
+            WebView::class.java.getDeclaredMethod(
+                "onOverScrolled",
+                Int::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType,
+                Boolean::class.javaPrimitiveType,
+                Boolean::class.javaPrimitiveType,
+            )
+        m.isAccessible = true
+        m.invoke(s.webView, 0, 0, false, true)
+        job.cancel()
+        assertEquals(1, got.size)
+    }
+
+    private fun touch(
+        s: WebViewEngineSession,
+        action: Int,
+        y: Float,
+    ) {
+        val e = android.view.MotionEvent.obtain(0L, 0L, action, 10f, y, 0)
+        s.webView.onTouchEvent(e)
+        e.recycle()
+    }
+
+    @Test
+    fun spec008_fallback_downwardDragAtTop_emitsTopOverscrollOnce() {
+        val s = WebViewEngineSession(context)
+        val got = mutableListOf<Unit>()
+        val job = CoroutineScope(Dispatchers.Unconfined).launch { s.topOverscroll.collect { got += it } }
+        touch(s, android.view.MotionEvent.ACTION_DOWN, 100f)
+        touch(s, android.view.MotionEvent.ACTION_MOVE, 300f)
+        touch(s, android.view.MotionEvent.ACTION_MOVE, 500f)
+        job.cancel()
+        assertEquals(1, got.size)
+    }
+
+    @Test
+    fun spec008_fallback_notEmittedWhenRealOverscrollAlreadyReported() {
+        val s = WebViewEngineSession(context)
+        val got = mutableListOf<Unit>()
+        val job = CoroutineScope(Dispatchers.Unconfined).launch { s.topOverscroll.collect { got += it } }
+        touch(s, android.view.MotionEvent.ACTION_DOWN, 100f)
+        val m =
+            WebView::class.java.getDeclaredMethod(
+                "onOverScrolled",
+                Int::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType,
+                Boolean::class.javaPrimitiveType,
+                Boolean::class.javaPrimitiveType,
+            )
+        m.isAccessible = true
+        m.invoke(s.webView, 0, 0, false, true)
+        touch(s, android.view.MotionEvent.ACTION_MOVE, 500f)
+        job.cancel()
+        assertEquals(1, got.size)
     }
 }
