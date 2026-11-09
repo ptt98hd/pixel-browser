@@ -31,6 +31,7 @@
     <!-- Menu -->
     <string name="browser_share">Chia sẻ liên kết</string>
 
+    <string name="browser_history">Lịch sử</string>
     <string name="browser_theme">Giao diện</string>
     <string name="browser_theme_system">Theo hệ thống</string>
     <string name="browser_theme_light">Sáng</string>

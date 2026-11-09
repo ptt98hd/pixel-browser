@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="history_title">Lịch sử</string>
+    <string name="history_search_hint">Tìm trong lịch sử</string>
+    <string name="history_search_clear">Xóa nội dung tìm kiếm</string>
+    <string name="history_close">Đóng</string>
+    <string name="history_clear_button">Xóa lịch sử duyệt web</string>
+    <string name="history_today">Hôm nay</string>
+    <string name="history_yesterday">Hôm qua</string>
+    <string name="history_empty_no_history">Chưa có lịch sử</string>
+    <string name="history_empty_no_match">Không tìm thấy trang nào</string>
+    <string name="history_load_more">Tải thêm</string>
+    <string name="history_menu_open_new_tab">Mở trong tab mới</string>
+    <string name="history_menu_copy">Sao chép liên kết</string>
+    <string name="history_menu_delete">Xóa</string>
+    <string name="history_copied">Đã sao chép liên kết</string>
+    <string name="history_clear_title">Xóa lịch sử</string>
+    <string name="history_clear_last_hour">Giờ qua</string>
+    <string name="history_clear_last_day">24 giờ qua</string>
+    <string name="history_clear_last_week">7 ngày qua</string>
+    <string name="history_clear_all">Toàn bộ</string>
+    <string name="history_clear_confirm">Xóa</string>
+    <string name="history_clear_cancel">Hủy</string>
+    <string name="history_item_more_actions">Thêm tác vụ</string>
+</resources>

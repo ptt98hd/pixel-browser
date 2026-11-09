@@ -25,6 +25,7 @@ class FakeEngineSession : EngineSession {
     private var index = -1
     private var closed = false
     private var sslErrorInLoad = false
+    private var mainFrameErrorInLoad = false
     private val _scrollCommands = mutableListOf<ScrollCommand>()
 
     val loadedUrls: List<String> get() = history.toList()
@@ -48,6 +49,7 @@ class FakeEngineSession : EngineSession {
         pendingNavigation = Navigation.NewPage
         cacheMode = CacheMode.Default
         sslErrorInLoad = false
+        mainFrameErrorInLoad = false
         dialogGuard.onNewPage()
         _favicon.value = null
         _state.update {
@@ -70,6 +72,7 @@ class FakeEngineSession : EngineSession {
         if (closed || index <= 0) return
         pendingNavigation = Navigation.Back
         sslErrorInLoad = false
+        mainFrameErrorInLoad = false
         dialogGuard.onNewPage()
         cacheMode = CacheMode.CacheElseNetwork
         _state.update { it.copy(url = history[index - 1], isLoading = true, progress = 0) }
@@ -79,6 +82,7 @@ class FakeEngineSession : EngineSession {
         if (closed || index >= history.lastIndex) return
         pendingNavigation = Navigation.Forward
         sslErrorInLoad = false
+        mainFrameErrorInLoad = false
         dialogGuard.onNewPage()
         cacheMode = CacheMode.CacheElseNetwork
         _state.update { it.copy(url = history[index + 1], isLoading = true, progress = 0) }
@@ -89,6 +93,7 @@ class FakeEngineSession : EngineSession {
         pendingNavigation = Navigation.Reload
         cacheMode = CacheMode.Default
         sslErrorInLoad = false
+        mainFrameErrorInLoad = false
         dialogGuard.onNewPage()
         _state.update { it.copy(isLoading = true, progress = 0, isAtTop = true) }
     }
@@ -114,9 +119,10 @@ class FakeEngineSession : EngineSession {
     /** Như `onPageStarted` của WebView: không đổi lịch sử; securityState về Unknown trừ khi đã có lỗi SSL. */
     fun simulatePageStarted(url: String) {
         if (closed) return
+        mainFrameErrorInLoad = false
         _favicon.value = null
         val security = if (sslErrorInLoad) SecurityState.Insecure else SecurityState.Unknown
-        _state.update { it.copy(url = url, isLoading = true, securityState = security, isAtTop = true) }
+        _state.update { it.copy(url = url, title = "", isLoading = true, securityState = security, isAtTop = true) }
     }
 
     override fun scrollToTop() {
@@ -155,6 +161,7 @@ class FakeEngineSession : EngineSession {
         pendingNavigation = Navigation.Reload
         cacheMode = CacheMode.CacheElseNetwork
         sslErrorInLoad = false
+        mainFrameErrorInLoad = false
         _state.update {
             it.copy(
                 url = history[index],
@@ -226,6 +233,7 @@ class FakeEngineSession : EngineSession {
         pendingNavigation = Navigation.NewPage
         cacheMode = CacheMode.Default
         val security = securityStateOnFinish(url, sslErrorInLoad)
+        val isError = mainFrameErrorInLoad || sslErrorInLoad
         sslErrorInLoad = false
         _state.update {
             it.copy(
@@ -237,6 +245,16 @@ class FakeEngineSession : EngineSession {
                 canGoForward = index < history.lastIndex,
             )
         }
+        _pageFinished.tryEmit(PageFinished(url, _state.value.title, isError))
+    }
+
+    private val _pageFinished = MutableSharedFlow<PageFinished>(extraBufferCapacity = 8)
+    override val pageFinished: SharedFlow<PageFinished> = _pageFinished
+
+    /** Lỗi mạng/HTTP >= 400 ở main frame trong lần tải hiện tại (spec 012). */
+    fun simulateMainFrameError() {
+        if (closed) return
+        mainFrameErrorInLoad = true
     }
 
     fun simulateSslError() {

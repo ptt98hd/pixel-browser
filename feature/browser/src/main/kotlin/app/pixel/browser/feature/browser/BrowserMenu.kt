@@ -20,7 +20,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 
 /**
- * Menu tối thiểu: Reload, New tab, Share (Share disabled khi URL rỗng/`about:blank`), Theme (mở `ThemeDialog`,
+ * Menu tối thiểu: Reload, New tab, Share, Lịch sử (luôn bật, spec 012) (Share disabled khi URL rỗng/`about:blank`), Theme (mở `ThemeDialog`,
  * spec 011) và "Đặt làm trình duyệt mặc định" khi [showSetDefault] (spec 006 AC18).
  */
 @Composable
@@ -34,6 +34,7 @@ fun BrowserMenu(
     showSetDefault: Boolean = false,
     onSetDefault: () -> Unit = {},
     onTheme: () -> Unit = {},
+    onHistory: () -> Unit = {},
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         DropdownMenuItem(
@@ -63,6 +64,12 @@ fun BrowserMenu(
                 modifier = Modifier.testTag(BrowserTestTags.MENU_SET_DEFAULT),
             )
         }
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.browser_history)) },
+            onClick = onHistory,
+            leadingIcon = { Icon(HistoryIcon, contentDescription = null) },
+            modifier = Modifier.testTag(BrowserTestTags.MENU_HISTORY),
+        )
         DropdownMenuItem(
             text = { Text(stringResource(R.string.browser_theme)) },
             onClick = onTheme,

@@ -293,6 +293,10 @@ private fun ChromeBottom(
                     onMenuOpenChange(false)
                     onThemeClick()
                 },
+                onHistory = {
+                    onMenuOpenChange(false)
+                    actions.onOpenHistory()
+                },
             )
         }
     }
@@ -335,6 +339,10 @@ fun BrowserRoute(
     homeContent: @Composable () -> Unit = {},
     /** Spec 009: kho thumbnail (`:app` tạo, cũng nhận `onTrimMemory`); null → mọi thẻ dùng placeholder. */
     thumbnails: BitmapTabThumbnailRepository? = null,
+    /** Spec 012: màn hình khác (Lịch sử, ...) đang phủ lên trình duyệt → pause trang. */
+    overlayOpen: Boolean = false,
+    /** Spec 012: `:app` mở lớp phủ Lịch sử. */
+    onOpenHistory: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
     val session by viewModel.selectedSession.collectAsState()
@@ -351,8 +359,9 @@ fun BrowserRoute(
     // Tab switcher phủ toàn màn hình (spec 009): pause trang phía sau khi nó mở, resume khi đóng.
     var switcherOpen by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(session, state.isHome, switcherOpen) {
-        if (state.isHome || switcherOpen) {
+    val covered = switcherOpen || overlayOpen
+    LaunchedEffect(session, state.isHome, covered) {
+        if (state.isHome || covered) {
             session?.onPause()
         } else if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
             session?.onResume()
@@ -360,9 +369,9 @@ fun BrowserRoute(
     }
     // Spec 008 AC17: kéo-để-tải-lại tắt khi sửa URL, fullscreen, có dialog, switcher mở hoặc ở home.
     val pullEnabled =
-        GestureGate.of(state, overlayOpen = switcherOpen, systemGestureNav = false).pullToRefresh
+        GestureGate.of(state, overlayOpen = covered, systemGestureNav = false).pullToRefresh
     val actions =
-        remember(viewModel, context, shareTitle, setDefault, onThemeChange) {
+        remember(viewModel, context, shareTitle, setDefault, onThemeChange, onOpenHistory) {
             BrowserActions(
                 onBack = viewModel::onBack,
                 onForward = viewModel::onForward,
@@ -404,6 +413,7 @@ fun BrowserRoute(
                 onUndoCloseTab = viewModel::onUndoCloseTab,
                 onCloseAllTabs = viewModel::onCloseAllTabs,
                 onSelectAdjacentTab = viewModel::onSelectAdjacentTab,
+                onOpenHistory = onOpenHistory,
             )
         }
     BrowserScreen(
@@ -417,7 +427,7 @@ fun BrowserRoute(
                 session = session,
                 enabled = pullEnabled,
                 onReload = viewModel::onReload,
-            ) { EngineContainer(session = session, paused = switcherOpen) }
+            ) { EngineContainer(session = session, paused = covered) }
         },
         homeContent = homeContent,
         thumbnail = { id -> thumbnails?.thumbnail(id) },

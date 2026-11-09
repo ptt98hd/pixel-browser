@@ -23,7 +23,7 @@ Trạng thái: ⬜ chưa làm · 🟨 đang làm · ✅ xong. Mỗi feature có 
 ## B. Chrome parity (M2)
 | ID | Feature | Status |
 |---|---|---|
-| B01 | Lịch sử duyệt web (tìm, xóa theo khoảng thời gian), gợi ý omnibox từ lịch sử/bookmark (spec 012; gợi ý bookmark: spec 013) | 🟨 |
+| B01 | Lịch sử duyệt web (tìm, xóa theo khoảng thời gian), gợi ý omnibox từ lịch sử/bookmark (spec 012; gợi ý bookmark: spec 013). Ghi chú: `FileFaviconStore` (AC22) đã có nhưng chưa nối vào UI (hàng lịch sử dùng ô chữ cái); phần lịch sử + gợi ý đã xong | ✅ |
 | B02 | Bookmark + thư mục, import/export (HTML) (spec 013) | 🟨 |
 | B03 | Downloads: parallel multi-segment, resume/pause, notification, quản lý file, cài APK an toàn | ⬜ |
 | B04 | Find in page (spec 015) | 🟨 |

@@ -21,6 +21,10 @@ class FakeEngineSessionContractTest : EngineSessionContractTest() {
 
     override fun EngineSession.emitPageFinished(url: String) = (this as FakeEngineSession).simulatePageFinished(url)
 
+    override fun EngineSession.emitMainFrameError() = (this as FakeEngineSession).simulateMainFrameError()
+
+    override fun EngineSession.emitTitle(title: String) = (this as FakeEngineSession).simulateTitle(title)
+
     override fun EngineSession.emitSslError() = (this as FakeEngineSession).simulateSslError()
 
     override fun EngineSession.emitPageStarted(url: String) = (this as FakeEngineSession).simulatePageStarted(url)

@@ -30,6 +30,13 @@ data class EngineState(
     val isAtTop: Boolean = true,
 )
 
+/** Trang main-frame đã tải xong (spec 012). [isError]: lỗi mạng/SSL/HTTP >= 400 ở main frame trong lần tải này. */
+data class PageFinished(
+    val url: String,
+    val title: String,
+    val isError: Boolean,
+)
+
 /** Một phiên duyệt web (tương ứng một tab) che engine bên dưới để logic test được trên JVM. */
 interface EngineSession {
     val state: StateFlow<EngineState>
@@ -97,6 +104,9 @@ interface EngineSession {
 
     /** Phát mỗi lần root scroller bị kéo quá đỉnh (overscroll dọc ở scrollY == 0). Không replay (spec 008 AC2). */
     val topOverscroll: SharedFlow<Unit>
+
+    /** Phát mỗi khi trang main-frame tải xong (spec 012). Replay 0, không phát sau [close]. */
+    val pageFinished: SharedFlow<PageFinished>
 }
 
 fun isValidWebUrl(url: String): Boolean {
