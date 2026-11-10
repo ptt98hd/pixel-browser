@@ -35,5 +35,13 @@ object SettingsTestTags {
     const val DESKTOP_OVERRIDES = "settings_desktop_overrides"
     const val DESKTOP_CLEAR = "settings_desktop_clear"
 
+    // Spec 016
+    const val PRIVATE_SCREENSHOTS = "private_browsing_screenshots"
+    const val PRIVATE_GUARANTEE = "private_browsing_guarantee"
+    const val PRIVATE_UNAVAILABLE = "private_browsing_unavailable"
+
+    /** `private_browsing_autoclose_<never|5|30>`. */
+    fun privateAutoClose(name: String) = "private_browsing_autoclose_$name"
+
     fun aboutLicense(index: Int) = "about_license_$index"
 }

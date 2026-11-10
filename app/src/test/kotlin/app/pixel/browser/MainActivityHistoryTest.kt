@@ -1,5 +1,6 @@
 package app.pixel.browser
 
+import android.content.MutableContextWrapper
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsEnabled
@@ -14,6 +15,9 @@ import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
+import app.pixel.browser.core.engine.FakeProfileGateway
+import app.pixel.browser.core.engine.PrivateSpace
+import app.pixel.browser.core.engine.RetryScheduler
 import app.pixel.browser.core.engine.WebViewEngineSession
 import app.pixel.browser.core.history.InMemoryHistoryStore
 import app.pixel.browser.core.tabs.TabManager
@@ -258,6 +262,13 @@ class MainActivityHistoryTest {
 
     @Test
     fun ac20_privateTab_finishedPage_isNotInHistory() {
+        // Spec 016: tab ẩn danh cần PrivateSpace khả dụng (fail-closed); dùng gateway giả với WebView thật.
+        val app = RuntimeEnvironment.getApplication() as PixelBrowserApplication
+        val gateway = FakeProfileGateway()
+        app.bindPrivateSpace(PrivateSpace(gateway, scheduler = RetryScheduler { _, _ -> }))
+        app.bindBaseSessionFactory { profile ->
+            WebViewEngineSession(MutableContextWrapper(app), profile, gateway)
+        }
         val s = launch()
         val vm = vm(s)
         val manager = tabManager(vm)

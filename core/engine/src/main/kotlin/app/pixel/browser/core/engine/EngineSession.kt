@@ -43,6 +43,9 @@ data class PageFinished(
 interface EngineSession {
     val state: StateFlow<EngineState>
 
+    /** Session của tab ẩn danh: dùng profile WebView riêng, không ghi gì xuống đĩa (spec 016). */
+    val isPrivate: Boolean
+
     /** View hiển thị nội dung trang (spec 005); null nếu engine không có view (Fake) hoặc đã [close]. */
     val view: View?
 

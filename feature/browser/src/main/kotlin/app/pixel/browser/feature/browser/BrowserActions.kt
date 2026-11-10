@@ -63,4 +63,14 @@ data class BrowserActions(
     val onCloseFind: () -> Unit = {},
     /** Menu "Trang web máy tính" (spec 015 B05). */
     val onToggleDesktopSite: () -> Unit = {},
+    /** FAB của trình chuyển tab ở nhóm thường khi tab đang chọn là tab ẩn danh (spec 016 AC19). */
+    val onNewNormalTab: () -> Unit = {},
+    /** Menu hoặc trình chuyển tab sắp hiện: truy vấn `canOpenPrivate` (lười, spec 016 review). */
+    val onResolvePrivateAvailability: () -> Unit = {},
+    /** Menu "Tab ẩn danh" (spec 016 AC17). */
+    val onNewPrivateTab: () -> Unit = {},
+    /** Xác nhận "Đóng tất cả tab ẩn danh" trong trình chuyển tab (spec 016 AC20). */
+    val onClosePrivateTabs: () -> Unit = {},
+    /** Trình chuyển tab đổi nhóm: true = nhóm ẩn danh (spec 016 AC19). */
+    val onSwitcherGroupChange: (Boolean) -> Unit = {},
 )

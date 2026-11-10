@@ -48,6 +48,11 @@ class SitePermissionMemory {
     ) {
         choices[origin to permission] = allowed
     }
+
+    /** Xóa mọi lựa chọn (bộ nhớ quyền của tab ẩn danh khi hết tab ẩn danh; spec 016). */
+    fun clear() {
+        choices.clear()
+    }
 }
 
 /** Cách mở trình chọn file cho một [EngineRequest.FileChooser] (spec 007 AC18). */

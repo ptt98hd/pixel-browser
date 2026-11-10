@@ -109,6 +109,38 @@ fun BrowserScreen(
     themeSettings: ThemeSettings = ThemeSettings(),
     fullscreenContent: @Composable () -> Unit = { FullscreenContainer(view = null) },
     engineContent: @Composable () -> Unit = {},
+    homeContent: @Composable () -> Unit = {},
+    thumbnail: @Composable (String) -> ImageBitmap? = { null },
+    favicon: @Composable (String) -> ImageBitmap? = { null },
+    onSwitcherOpenChange: (Boolean) -> Unit = {},
+    systemGestureNav: Boolean = rememberSystemGestureNav(),
+) {
+    PrivateKeyboard(enabled = state.selectedIsPrivate) {
+        BrowserScreenContent(
+            state,
+            actions,
+            modifier,
+            themeSettings,
+            fullscreenContent,
+            engineContent,
+            homeContent,
+            thumbnail,
+            favicon,
+            onSwitcherOpenChange,
+            systemGestureNav,
+        )
+    }
+}
+
+@Composable
+@Suppress("LongParameterList", "LongMethod")
+private fun BrowserScreenContent(
+    state: BrowserUiState,
+    actions: BrowserActions,
+    modifier: Modifier = Modifier,
+    themeSettings: ThemeSettings = ThemeSettings(),
+    fullscreenContent: @Composable () -> Unit = { FullscreenContainer(view = null) },
+    engineContent: @Composable () -> Unit = {},
     /** Spec 010: vẽ thay cho [engineContent] khi `state.isHome`. */
     homeContent: @Composable () -> Unit = {},
     /** Spec 009: ảnh thumbnail của tab cho tab switcher. */
@@ -123,6 +155,8 @@ fun BrowserScreen(
     var menuOpen by rememberSaveable { mutableStateOf(false) }
     var tabsOpen by rememberSaveable { mutableStateOf(false) }
     var themeDialogOpen by rememberSaveable { mutableStateOf(false) }
+    // Nhóm đang hiển thị của trình chuyển tab: giữ ở đây (đặt ngay lúc bấm) để FLAG_SECURE theo kịp từ khung đầu.
+    var switcherPrivate by rememberSaveable { mutableStateOf(false) }
 
     // AC31: (a) sheet/menu → đóng; (b) đang sửa → hủy sửa; (c) có lịch sử → goBack; (d) không chặn.
     // Spec 006 AC14: tab mở từ intent, hết lịch sử → đóng tab và quay về app gọi.
@@ -168,6 +202,7 @@ fun BrowserScreen(
 
     val currentOnSwitcherOpenChange by rememberUpdatedState(onSwitcherOpenChange)
     LaunchedEffect(tabsOpen) { currentOnSwitcherOpenChange(tabsOpen) }
+    LaunchedEffect(menuOpen, tabsOpen) { if (menuOpen || tabsOpen) actions.onResolvePrivateAvailability() }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -218,7 +253,21 @@ fun BrowserScreen(
                     onBack = actions.onBack,
                     onForward = actions.onForward,
                 ) {
-                    if (state.isHome) homeContent() else engineContent()
+                    when {
+                        state.isHome && state.selectedIsPrivate -> {
+                            PrivateLanding(
+                                onSearchClick = actions.onStartEditing,
+                            )
+                        }
+
+                        state.isHome -> {
+                            homeContent()
+                        }
+
+                        else -> {
+                            engineContent()
+                        }
+                    }
                 }
                 // Snackbar ngay trên bottom bar (đáy vùng nội dung).
                 SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter)) { data ->
@@ -253,6 +302,9 @@ fun BrowserScreen(
                     onMenuOpenChange = { menuOpen = it },
                     onTabsClick = {
                         actions.onOpenTabSwitcher()
+                        switcherPrivate = state.selectedIsPrivate
+                        actions.onSwitcherGroupChange(switcherPrivate)
+                        onSwitcherOpenChange(true)
                         tabsOpen = true
                     },
                     onThemeClick = { themeDialogOpen = true },
@@ -275,6 +327,16 @@ fun BrowserScreen(
                 onNewTab = actions.onNewTab,
                 onCloseAll = actions.onCloseAllTabs,
                 onDismiss = { tabsOpen = false },
+                selectedIsPrivate = state.selectedIsPrivate,
+                canOpenPrivate = state.canOpenPrivate,
+                onNewNormalTab = actions.onNewNormalTab,
+                onNewPrivateTab = actions.onNewPrivateTab,
+                onClosePrivate = actions.onClosePrivateTabs,
+                showPrivate = switcherPrivate,
+                onShowPrivateChange = {
+                    switcherPrivate = it
+                    actions.onSwitcherGroupChange(it)
+                },
             )
         }
     }
@@ -368,6 +430,11 @@ private fun ChromeBottom(
                     onMenuOpenChange(false)
                     actions.onToggleDesktopSite()
                 },
+                canOpenPrivate = state.canOpenPrivate,
+                onNewPrivateTab = {
+                    onMenuOpenChange(false)
+                    actions.onNewPrivateTab()
+                },
             )
         }
     }
@@ -402,6 +469,7 @@ private fun messageText(code: String): String =
         BrowserMessages.BOOKMARK_ADDED -> stringResource(R.string.browser_message_bookmark_added)
         BrowserMessages.BOOKMARK_FAILED -> stringResource(R.string.browser_message_bookmark_failed)
         BrowserMessages.BOOKMARK_REMOVED -> stringResource(R.string.browser_message_bookmark_removed)
+        BrowserMessages.PRIVATE_UNAVAILABLE -> stringResource(R.string.browser_message_private_unavailable)
         else -> code
     }
 
@@ -436,8 +504,11 @@ fun BrowserRoute(
     onOpenBookmarks: () -> Unit = {},
     /** Spec 013: `:app` mở hộp thoại sửa dấu trang [id] (menu "Sửa dấu trang" hoặc snackbar). */
     onEditBookmark: (Long) -> Unit = {},
+    /** Spec 016: `:app` biết trình chuyển tab đang mở để đặt `FLAG_SECURE` cho nhóm ẩn danh. */
+    onSwitcherVisibilityChange: (Boolean) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
+    val currentSwitcherVisibility by rememberUpdatedState(onSwitcherVisibilityChange)
     val currentEditBookmark by rememberUpdatedState(onEditBookmark)
     LaunchedEffect(viewModel) { viewModel.bookmarkEditRequests.collect { currentEditBookmark(it) } }
     val session by viewModel.selectedSession.collectAsState()
@@ -528,6 +599,11 @@ fun BrowserRoute(
                 onFindNext = viewModel::onFindNext,
                 onCloseFind = viewModel::onCloseFind,
                 onToggleDesktopSite = viewModel::onToggleDesktopSite,
+                onNewNormalTab = viewModel::onNewNormalTab,
+                onNewPrivateTab = viewModel::onNewPrivateTab,
+                onClosePrivateTabs = viewModel::onClosePrivateTabs,
+                onSwitcherGroupChange = viewModel::onSwitcherGroupChange,
+                onResolvePrivateAvailability = viewModel::onResolvePrivateAvailability,
             )
         }
     BrowserScreen(
@@ -546,19 +622,26 @@ fun BrowserRoute(
         homeContent = homeContent,
         thumbnail = { id -> thumbnails?.thumbnail(id) },
         favicon = { id -> rememberFavicon(viewModel, id, state.tabs) },
-        onSwitcherOpenChange = { switcherOpen = it },
+        onSwitcherOpenChange = {
+            switcherOpen = it
+            currentSwitcherVisibility(it)
+        },
     )
     KeepScreenOnAndImmersive(enabled = state.isFullscreen)
-    EngineRequestHost(
-        tabId = state.selectedTabId,
-        request = state.pendingRequest,
-        pageOrigin = originOf(state.url),
-        runtimePermissions = viewModel.runtimePermissions,
-        onRespond = { tabId, requestId, response -> viewModel.onRespond(tabId, requestId, response) },
-        onPermissionDecision = { tabId, requestId, allow -> viewModel.onPermissionDecision(tabId, requestId, allow) },
-        onFileChooserUnavailable = viewModel::onFileChooserUnavailable,
-        onDownloadFailed = viewModel::onDownloadFailed,
-    )
+    val onPermissionDecision: (String, Long, Boolean) -> Unit = viewModel::onPermissionDecision
+    PrivateKeyboard(enabled = state.selectedIsPrivate) {
+        EngineRequestHost(
+            tabId = state.selectedTabId,
+            request = state.pendingRequest,
+            pageOrigin = originOf(state.url),
+            runtimePermissions = viewModel.runtimePermissions,
+            onRespond = { tabId, requestId, response -> viewModel.onRespond(tabId, requestId, response) },
+            onPermissionDecision = onPermissionDecision,
+            onFileChooserUnavailable = viewModel::onFileChooserUnavailable,
+            onDownloadFailed = viewModel::onDownloadFailed,
+            isPrivate = state.selectedIsPrivate,
+        )
+    }
 }
 
 private val NO_FAVICON: StateFlow<Bitmap?> = MutableStateFlow(null)

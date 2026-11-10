@@ -88,6 +88,20 @@ object BrowserTestTags {
     const val FIND_NEXT = "find_next"
     const val FIND_CLOSE = "find_close"
 
+    // Spec 016
+    const val MENU_NEW_PRIVATE_TAB = "menu_new_private_tab"
+    const val PRIVATE_INDICATOR = "private_indicator"
+    const val PRIVATE_LANDING = "private_landing"
+    const val PRIVATE_LANDING_SEARCH = "private_landing_search"
+    const val TAB_SWITCHER_GROUP_NORMAL = "tab_switcher_group_normal"
+    const val TAB_SWITCHER_GROUP_PRIVATE = "tab_switcher_group_private"
+    const val TAB_SWITCHER_CLOSE_PRIVATE = "tab_switcher_close_private"
+    const val TAB_SWITCHER_PRIVATE_EMPTY = "tab_switcher_private_empty"
+    const val DOWNLOAD_PRIVATE_WARNING = "download_private_warning"
+    const val CLOSE_PRIVATE_DIALOG = "close_private_dialog"
+    const val CLOSE_PRIVATE_CONFIRM = "close_private_confirm"
+    const val CLOSE_PRIVATE_CANCEL = "close_private_cancel"
+
     fun tabItem(id: String): String = "tab_item_$id"
 
     fun tabClose(id: String): String = "tab_close_$id"

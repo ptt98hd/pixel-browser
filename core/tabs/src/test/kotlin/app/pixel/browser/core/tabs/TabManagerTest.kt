@@ -743,7 +743,7 @@ class TabManagerTest {
     }
 
     @Test
-    fun ac3_closeAllTabs_includesPrivateTabs() {
+    fun ac3_closeAllTabs_includesPrivateTabs_butTheyAreNotUndoable() {
         val (m, ta, _) = threeTabs()
         val p = m.openTab(c, isPrivate = true)
         val privateSession = m.fake(p.id)
@@ -756,8 +756,9 @@ class TabManagerTest {
                 .single()
                 .isHome,
         )
+        // Spec 016 AC9: tab ẩn danh không bao giờ hoàn tác được; tab thường vẫn được.
         val restored = generateSequence { m.undoClose() }.toList()
-        assertTrue(restored.any { it.id == p.id && it.isPrivate })
+        assertTrue(restored.none { it.id == p.id || it.isPrivate })
         assertEquals(ta.id, restored.first().id)
     }
 }

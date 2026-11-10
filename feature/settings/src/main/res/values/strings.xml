@@ -49,4 +49,17 @@
         <item quantity="other">%1$d sites</item>
     </plurals>
     <string name="settings_desktop_clear">Clear exceptions</string>
+    <!-- Spec 016: duyệt ẩn danh -->
+    <string name="settings_page_private_browsing">Private browsing</string>
+    <string name="settings_private_screenshots">Block screenshots</string>
+    <string name="settings_private_screenshots_summary">Hides private tabs from screenshots, screen recording and the recent apps screen</string>
+    <string name="settings_private_autoclose_title">Close private tabs after leaving the app</string>
+    <string name="settings_private_autoclose_never">Never</string>
+    <string name="settings_private_autoclose_5">After 5 minutes</string>
+    <string name="settings_private_autoclose_30">After 30 minutes</string>
+    <string name="settings_private_guaranteed_title">What private tabs do</string>
+    <string name="settings_private_guaranteed">Cookies, site storage, cache and permissions of private tabs are kept separate from normal tabs and deleted when the last private tab closes. Private tabs leave no history, thumbnails or saved tabs on disk, and your keyboard is asked not to learn from what you type. Screenshots and the recent apps preview are blocked unless you turn that off.</string>
+    <string name="settings_private_not_guaranteed_title">What private tabs do not hide</string>
+    <string name="settings_private_not_guaranteed">Your network provider, employer and the websites you visit can still see your activity. Files you download stay on your device, and bookmarks you add are saved. Safe Browsing, if enabled, still sends partial URL hashes to Google. Memory and crash dumps of the operating system are out of our control.</string>
+    <string name="settings_private_unavailable">Private tabs are unavailable because this version of Android System WebView does not support separate profiles. Update Android System WebView to use them.</string>
 </resources>

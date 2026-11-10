@@ -56,6 +56,7 @@ object SettingsPageIds {
     const val SAFE_BROWSING = "safe_browsing"
     const val ACCESSIBILITY = "accessibility"
     const val DESKTOP_SITE = "desktop_site"
+    const val PRIVATE_BROWSING = "private_browsing"
 }
 
 /** Registry dữ liệu của các trang cài đặt (spec 014 AC5–AC7). */

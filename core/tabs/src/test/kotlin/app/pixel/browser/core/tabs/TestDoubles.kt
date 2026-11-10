@@ -6,7 +6,14 @@ import app.pixel.browser.core.engine.FakeEngineSession
 class RecordingSessionFactory : EngineSessionFactory {
     val created = mutableListOf<FakeEngineSession>()
 
-    override fun create(): FakeEngineSession = FakeEngineSession().also { created += it }
+    /** Giá trị `isPrivate` của từng lời gọi [create], theo thứ tự (spec 016). */
+    val requestedPrivate = mutableListOf<Boolean>()
+
+    override fun create(isPrivate: Boolean): FakeEngineSession =
+        FakeEngineSession(isPrivate).also {
+            created += it
+            requestedPrivate += isPrivate
+        }
 }
 
 class InMemoryTabSnapshotStore(

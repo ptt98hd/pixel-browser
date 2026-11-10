@@ -72,3 +72,24 @@ internal val DesktopIcon: ImageVector by lazy {
             fill = SolidColor(Color.Black),
         ).build()
 }
+
+/** Icon "tab ẩn danh": mũ và hai tròng kính (vẽ riêng cho Pixel). */
+internal val PrivateIcon: ImageVector by lazy {
+    ImageVector
+        .Builder(
+            name = "Private",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).addPath(
+            pathData =
+                addPathNodes(
+                    "M12,3C9.3,3 7.4,4.2 7.4,4.2L6,9h12l-1.4,-4.8C16.6,4.2 14.7,3 12,3z" +
+                        "M12,11c-4.4,0 -8,0.9 -8,2v1h16v-1C20,11.9 16.4,11 12,11z" +
+                        "M8,15a2,2 0 1,0 0,4a2,2 0 1,0 0,-4z" +
+                        "M16,15a2,2 0 1,0 0,4a2,2 0 1,0 0,-4z",
+                ),
+            fill = SolidColor(Color.Black),
+        ).build()
+}

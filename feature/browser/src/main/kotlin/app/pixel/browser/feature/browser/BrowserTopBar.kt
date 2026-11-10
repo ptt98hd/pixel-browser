@@ -73,6 +73,19 @@ fun BrowserTopBar(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                if (state.selectedIsPrivate) {
+                    val privateLabel = stringResource(R.string.browser_private_indicator)
+                    Icon(
+                        imageVector = PrivateIcon,
+                        contentDescription = privateLabel,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier =
+                            Modifier
+                                .padding(horizontal = 8.dp)
+                                .size(24.dp)
+                                .testTag(BrowserTestTags.PRIVATE_INDICATOR),
+                    )
+                }
                 if (state.isEditingUrl) {
                     UrlField(
                         value = editValue,

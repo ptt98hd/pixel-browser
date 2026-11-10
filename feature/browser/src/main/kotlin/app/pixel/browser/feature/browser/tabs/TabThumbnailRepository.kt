@@ -19,6 +19,9 @@ interface TabThumbnailRepository {
 
     fun clearDisk()
 
+    /** Xóa thumbnail của [tabIds] khỏi cả bộ nhớ lẫn đĩa (tab ẩn danh khi hết tab ẩn danh; spec 016). */
+    fun purge(tabIds: Set<String>)
+
     /** Không làm gì (mặc định của `BrowserViewModel`, test, preview). */
     object None : TabThumbnailRepository {
         override fun capture(
@@ -32,5 +35,7 @@ interface TabThumbnailRepository {
         override fun retainOnly(tabIds: Set<String>) = Unit
 
         override fun clearDisk() = Unit
+
+        override fun purge(tabIds: Set<String>) = Unit
     }
 }
