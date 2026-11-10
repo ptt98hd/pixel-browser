@@ -3,8 +3,10 @@ package app.pixel.browser.feature.browser
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -17,6 +19,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
 
 /**
@@ -41,6 +48,11 @@ fun BrowserMenu(
     isBookmarked: Boolean = false,
     onToggleBookmark: () -> Unit = {},
     onBookmarks: () -> Unit = {},
+    canFind: Boolean = false,
+    onFind: () -> Unit = {},
+    canToggleDesktopSite: Boolean = false,
+    isDesktopSite: Boolean = false,
+    onToggleDesktopSite: () -> Unit = {},
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         DropdownMenuItem(
@@ -61,6 +73,32 @@ fun BrowserMenu(
             enabled = canShare,
             leadingIcon = { Icon(Icons.Filled.Share, contentDescription = null) },
             modifier = Modifier.testTag(BrowserTestTags.MENU_SHARE),
+        )
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.browser_find_in_page)) },
+            onClick = onFind,
+            enabled = canFind,
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+            modifier = Modifier.testTag(BrowserTestTags.MENU_FIND),
+        )
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.browser_desktop_site)) },
+            onClick = onToggleDesktopSite,
+            enabled = canToggleDesktopSite,
+            trailingIcon = {
+                Checkbox(
+                    checked = isDesktopSite,
+                    onCheckedChange = null,
+                    enabled = canToggleDesktopSite,
+                )
+            },
+            modifier =
+                Modifier
+                    .testTag(BrowserTestTags.MENU_DESKTOP_SITE)
+                    .semantics {
+                        role = Role.Checkbox
+                        toggleableState = if (isDesktopSite) ToggleableState.On else ToggleableState.Off
+                    },
         )
         if (showSetDefault) {
             DropdownMenuItem(

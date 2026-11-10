@@ -40,4 +40,12 @@
     <string name="about_license">Giấy phép: %1$s</string>
     <string name="about_source">Mã nguồn</string>
     <string name="about_libraries_title">Thư viện mã nguồn mở</string>
+    <!-- Spec 015: trang web máy tính -->
+    <string name="settings_desktop_default_title">Luôn yêu cầu trang web máy tính</string>
+    <string name="settings_desktop_default_summary">Áp dụng cho trang chưa có ngoại lệ. Tab đang mở không bị tải lại.</string>
+    <string name="settings_desktop_overrides_title">Ngoại lệ theo trang</string>
+    <plurals name="settings_desktop_overrides_count">
+        <item quantity="other">%1$d trang</item>
+    </plurals>
+    <string name="settings_desktop_clear">Xóa ngoại lệ</string>
 </resources>

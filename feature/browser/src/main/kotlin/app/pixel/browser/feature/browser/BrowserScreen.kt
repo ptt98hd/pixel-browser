@@ -133,10 +133,13 @@ fun BrowserScreen(
     val currentState by rememberUpdatedState(state)
     val currentActions by rememberUpdatedState(actions)
     PredictiveBackHandler(
-        enabled = menuOpen || tabsOpen || state.isEditingUrl || state.canGoBack || state.isExternalTab,
+        enabled =
+            menuOpen || tabsOpen || state.find != null || state.isEditingUrl || state.canGoBack || state.isExternalTab,
     ) { events ->
         // Fullscreen có BackHandler đăng ký sau nên thắng; handler này không nhận sự kiện khi đó.
-        val showsIndicator = !(menuOpen || tabsOpen || currentState.isEditingUrl) && currentState.canGoBack
+        val showsIndicator =
+            !(menuOpen || tabsOpen || currentState.find != null || currentState.isEditingUrl) &&
+                currentState.canGoBack
         try {
             events.collect { event ->
                 if (showsIndicator) {
@@ -154,6 +157,7 @@ fun BrowserScreen(
         when {
             tabsOpen -> tabsOpen = false
             menuOpen -> menuOpen = false
+            currentState.find != null -> currentActions.onCloseFind()
             currentState.isEditingUrl -> currentActions.onCancelEditing()
             currentState.canGoBack -> currentActions.onBack()
             else -> currentActions.onReturnToCaller()
@@ -231,6 +235,15 @@ fun BrowserScreen(
                             },
                     ) { Text(data.visuals.message) }
                 }
+            }
+            val find = state.find
+            if (find != null && !state.isFullscreen) {
+                FindBar(
+                    state = find,
+                    onQueryChange = actions.onFindQueryChange,
+                    onFindNext = actions.onFindNext,
+                    onClose = actions.onCloseFind,
+                )
             }
             if (!state.isFullscreen) {
                 ChromeBottom(
@@ -343,6 +356,17 @@ private fun ChromeBottom(
                 onSettings = {
                     onMenuOpenChange(false)
                     actions.onOpenSettings()
+                },
+                canFind = state.canFind,
+                onFind = {
+                    onMenuOpenChange(false)
+                    actions.onOpenFind()
+                },
+                canToggleDesktopSite = state.canToggleDesktopSite,
+                isDesktopSite = state.isDesktopSite,
+                onToggleDesktopSite = {
+                    onMenuOpenChange(false)
+                    actions.onToggleDesktopSite()
                 },
             )
         }
@@ -499,6 +523,11 @@ fun BrowserRoute(
                 onToggleBookmark = viewModel::onToggleBookmark,
                 onEditBookmark = { currentEditBookmark(it) },
                 onUndoBookmarkRemoved = viewModel::onUndoBookmarkRemoved,
+                onOpenFind = viewModel::onOpenFind,
+                onFindQueryChange = viewModel::onFindQueryChange,
+                onFindNext = viewModel::onFindNext,
+                onCloseFind = viewModel::onCloseFind,
+                onToggleDesktopSite = viewModel::onToggleDesktopSite,
             )
         }
     BrowserScreen(

@@ -9,6 +9,7 @@ import app.pixel.browser.core.bookmarks.BookmarkRepository
 import app.pixel.browser.core.bookmarks.BookmarkResult
 import app.pixel.browser.core.bookmarks.BookmarkRules
 import app.pixel.browser.core.bookmarks.DeletedTree
+import app.pixel.browser.core.data.site.DesktopSitePolicy
 import app.pixel.browser.core.engine.EngineRequest
 import app.pixel.browser.core.engine.EngineResponse
 import app.pixel.browser.core.engine.EngineSession
@@ -17,6 +18,7 @@ import app.pixel.browser.core.engine.isSecureOrigin
 import app.pixel.browser.core.engine.isValidWebUrl
 import app.pixel.browser.core.engine.originOf
 import app.pixel.browser.core.engine.schemeOf
+import app.pixel.browser.core.engine.siteKeyOf
 import app.pixel.browser.core.history.PageVisit
 import app.pixel.browser.core.history.PageVisitRecorder
 import app.pixel.browser.core.omnibox.DefaultSuggestionProvider
@@ -116,7 +118,111 @@ class BrowserViewModel(
     private val pageVisits: PageVisitRecorder = PageVisitRecorder.None,
     /** Kho dấu trang (spec 013); null → không có tính năng dấu trang. */
     private val bookmarks: BookmarkRepository? = null,
+    /** Chính sách trang web máy tính theo site (spec 015); null → bật/tắt chỉ đổi session, không lưu. */
+    private val desktopSites: DesktopSitePolicy? = null,
 ) : ViewModel() {
+    // --- Spec 015 B04: tìm trong trang ---
+
+    /** Thanh tìm đang mở cho session/tab/URL này (null = đóng); chỉ một thanh toàn cục, không nhớ qua tab. */
+    private var findSession: EngineSession? = null
+    private var findTabId: String? = null
+    private var findQuery = ""
+
+    /** Mở thanh tìm cho tab đang chọn (tab web, không fullscreen); hủy sửa URL (spec 015 AC4). */
+    fun onOpenFind() {
+        if (!_uiState.value.canFind || findSession != null) return
+        val session = current() ?: return
+        stopEditing()
+        findSession = session
+        findTabId = tabManager.selectedTabId.value
+        findQuery = ""
+        recompute()
+    }
+
+    /** Mỗi thay đổi ô nhập gọi engine một lần, không debounce; rỗng/khoảng trắng → xóa kết quả (AC5). */
+    fun onFindQueryChange(query: String) {
+        val session = findSession ?: return
+        findQuery = query
+        if (query.isBlank()) session.clearFind() else session.find(query)
+        recompute()
+    }
+
+    fun onFindNext(forward: Boolean) {
+        val session = findSession ?: return
+        if (session.findState.value.total > 0) session.findNext(forward)
+    }
+
+    fun onCloseFind() {
+        closeFind()
+        recompute()
+    }
+
+    private fun closeFind() {
+        val session = findSession ?: return
+        findSession = null
+        findTabId = null
+        findQuery = ""
+        session.clearFind()
+    }
+
+    /** Đóng thanh tìm khi tab/URL/trạng thái không còn khớp lúc mở (đổi tab, home, điều hướng, fullscreen). */
+    private fun validateFind() {
+        val session = findSession ?: return
+        val selectedId = tabManager.selectedTabId.value
+        val isHome = tabManager.tabs.value.any { it.id == selectedId && it.isHome }
+        val st = session.state.value
+        val valid =
+            selectedId == findTabId &&
+                !isHome &&
+                tabManager.session(selectedId.orEmpty()) === session &&
+                !st.isFullscreen &&
+                // Điều hướng/reload làm engine đặt lại kết quả: bỏ thanh nếu đã có truy vấn (URL đổi đơn thuần
+                // như redirect/pushState không đóng thanh).
+                !(
+                    findQuery.isNotBlank() &&
+                        session.findState.value.query
+                            .isEmpty()
+                )
+        if (!valid) closeFind()
+    }
+
+    private fun findUiState(session: EngineSession?): FindUiState? {
+        if (session == null || session !== findSession) return null
+        val engine = session.findState.value
+        val hasQuery = findQuery.isNotBlank()
+        return FindUiState(
+            query = findQuery,
+            current = if (hasQuery && engine.total > 0) engine.activeIndex + 1 else 0,
+            total = if (hasQuery) engine.total else 0,
+            isSearching = hasQuery && !engine.isDone,
+        )
+    }
+
+    // --- Spec 015 B05: trang web máy tính ---
+
+    /**
+     * Bật/tắt chế độ máy tính của tab đang chọn: luôn đổi session (tạm thời); tab thường còn lưu ngoại lệ theo
+     * site vào [desktopSites], tab ẩn danh thì không bao giờ ghi (AC20).
+     */
+    fun onToggleDesktopSite() {
+        if (!_uiState.value.canToggleDesktopSite) return
+        val session = current() ?: return
+        closeFind()
+        val enabled = !session.state.value.isDesktopSite
+        val tabId = tabManager.selectedTabId.value
+        val isPrivate = tabManager.tabs.value.any { it.id == tabId && it.isPrivate }
+        val key = siteKeyOf(session.state.value.url)
+        val policy = desktopSites
+        // Tab thường có policy: policy là nguồn duy nhất (không để ngoại lệ tạm của session lệch với nó).
+        var persisted = false
+        if (!isPrivate && key != null && policy != null) {
+            policy.setSite(key, enabled)
+            persisted = true
+        }
+        session.setDesktopSite(enabled, rememberInSession = !persisted)
+        recompute()
+    }
+
     private val _bookmarkEditRequests = MutableSharedFlow<Long>(extraBufferCapacity = 8)
 
     /** Yêu cầu mở hộp thoại sửa dấu trang (id) khi người dùng chọn "Sửa dấu trang" (spec 013 AC18). */
@@ -312,6 +418,7 @@ class BrowserViewModel(
     }
 
     fun onReload() {
+        closeFind()
         current()?.reload()
         recompute()
     }
@@ -333,6 +440,7 @@ class BrowserViewModel(
     }
 
     fun onStartEditing() {
+        closeFind()
         isEditing = true
         suggestions = emptyList()
         recompute()
@@ -419,6 +527,7 @@ class BrowserViewModel(
 
     /** Spec 009 AC8: chụp thumbnail tab hiện tại trước khi mở switcher. */
     fun onOpenTabSwitcher() {
+        closeFind()
         stopEditing()
         captureCurrentThumbnail()
         recompute()
@@ -922,7 +1031,7 @@ class BrowserViewModel(
         sessionsJob =
             viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
                 if (sessions.isNotEmpty()) {
-                    val flows = sessions.flatMap { listOf(it.state, it.requests) }
+                    val flows = sessions.flatMap { listOf(it.state, it.requests, it.findState) }
                     merge(*flows.toTypedArray()).collect { recompute() }
                 }
             }
@@ -957,6 +1066,7 @@ class BrowserViewModel(
             do {
                 recomputePending = false
                 observeSessions()
+                validateFind()
                 processExternalRequests()
                 processWebRequests()
                 publishState()
@@ -1010,6 +1120,8 @@ class BrowserViewModel(
                 ?.requests
                 ?.value
                 ?.firstNotNullOfOrNull { it as? EngineRequest.ExternalApp }
+        val canFind = !isHome && isValidWebUrl(url) && st?.isFullscreen != true
+        val canToggleDesktop = !isHome && session != null && isValidWebUrl(url)
         _selectedSession.value = session
         _uiState.value =
             BrowserUiState(
@@ -1037,6 +1149,10 @@ class BrowserViewModel(
                 canBookmark = canBookmark,
                 isBookmarked = canBookmark && currentBookmark != null,
                 bookmarkId = currentBookmark?.id.takeIf { canBookmark },
+                canFind = canFind,
+                find = findUiState(session),
+                canToggleDesktopSite = canToggleDesktop,
+                isDesktopSite = st?.isDesktopSite == true,
             )
     }
 

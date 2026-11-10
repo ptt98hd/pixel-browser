@@ -77,6 +77,17 @@ object BrowserTestTags {
     const val BACK_GESTURE_INDICATOR = "back_gesture_indicator"
     const val PULL_REFRESH_INDICATOR = "pull_refresh_indicator"
 
+    // Spec 015
+    const val MENU_FIND = "menu_find"
+    const val MENU_DESKTOP_SITE = "menu_desktop_site"
+    const val DESKTOP_INDICATOR = "desktop_indicator"
+    const val FIND_BAR = "find_bar"
+    const val FIND_FIELD = "find_field"
+    const val FIND_COUNT = "find_count"
+    const val FIND_PREV = "find_prev"
+    const val FIND_NEXT = "find_next"
+    const val FIND_CLOSE = "find_close"
+
     fun tabItem(id: String): String = "tab_item_$id"
 
     fun tabClose(id: String): String = "tab_close_$id"

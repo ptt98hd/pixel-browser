@@ -53,3 +53,22 @@ internal val SettingsIcon: ImageVector by lazy {
             fill = SolidColor(Color.Black),
         ).build()
 }
+
+/** Icon "desktop_windows" (Material Icons, Apache-2.0) – chỉ báo trang máy tính. Không có trong material-icons-core. */
+internal val DesktopIcon: ImageVector by lazy {
+    ImageVector
+        .Builder(
+            name = "DesktopWindows",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).addPath(
+            pathData =
+                addPathNodes(
+                    "M21,2L3,2c-1.1,0 -2,0.9 -2,2v12c0,1.1 0.9,2 2,2h7l-2,3v1h8v-1l-2,-3h7c1.1,0 2,-0.9 2,-2L23,4" +
+                        "c0,-1.1 -0.9,-2 -2,-2zM21,16L3,16L3,4h18v12z",
+                ),
+            fill = SolidColor(Color.Black),
+        ).build()
+}
