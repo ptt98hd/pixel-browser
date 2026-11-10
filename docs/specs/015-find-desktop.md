@@ -176,3 +176,17 @@ fun onOpenFind(); fun onFindQueryChange(q: String); fun onFindNext(forward: Bool
 - Persistence: Room 2.8.5 + KSP 2.3.13 (đã xác nhận có trên Maven; Kotlin 2.4.21/AGP 9.5.0) với spike bắt buộc ở 012 AC1; nếu không xanh sau một lượt cập nhật phiên bản thì fallback SQLiteOpenHelper (AC viết trên interface nên không đổi). Mỗi miền một file DB (`history.db`, `bookmarks.db`).
 - Chấp nhận các đề xuất của spec-writer: gốc bookmark "Dấu trang" + thư mục "Đã nhập <ngày>"; thứ tự gợi ý Search/GoTo → Bookmark → History (≤ 8); desktop site không ép bỏ meta viewport (giới hạn đã biết, thử trên máy thật); ngoại lệ desktop lưu JSON file đọc đồng bộ; 015 có thể tách 2 PR (find / desktop); tùy chọn tắt lịch sử thuộc B12/B14.
 - Thứ tự triển khai: 012 → 014 → 013 → 015 (rebase giữa các PR vì cùng sửa BrowserMenu/BrowserActions).
+
+## Quyết định (implementer, 2026-11-10)
+- `imePadding` không áp riêng trong `FindBar`: `BrowserBottomBar` đã áp `WindowInsets.ime` (adjustResize + edge-to-edge) và `FindBar` nằm ngay trên nó nên tự nổi trên bàn phím; cần kiểm thủ công API 31/35+.
+- Điều hướng main-frame chỉ đổi chế độ desktop khi URL là http(s) (`isValidWebUrl`); `javascript:`/`data:`/`blob:` không đổi UA (áp dụng cho `WebViewEngineSession` và `FakeEngineSession`).
+- `findNext` ở `WebViewEngineSession` là no-op khi `total == 0`; `restoreState` không đổi chế độ trực tiếp, chế độ đúng được áp ở `onPageStarted` (reload tối đa một lần/URL, cờ `modeReloadedFor`).
+- Điều hướng lịch sử đổi chế độ dùng `LOAD_NO_CACHE` cho lần reload đó (cache theo UA cũ không dùng lại).
+- Trang cài đặt hiển thị số ngoại lệ bằng `plurals` (en: one/other, vi: other).
+
+## Quyết định (implementer, vòng review)
+- Ngoại lệ tạm của session (`tempOverrides`) chỉ dùng cho tab ẩn danh, tab không có policy hoặc URL không có `siteKey`: `setDesktopSite(enabled, rememberInSession = false)` được VM dùng cho tab thường có policy (policy là nguồn duy nhất, "Xóa ngoại lệ" có hiệu lực ở điều hướng kế tiếp).
+- `onReload` và `onToggleDesktopSite` đóng thanh tìm. `validateFind` không còn đóng chỉ vì URL khác (redirect/pushState); thanh đóng khi engine đã đặt lại kết quả của một truy vấn không rỗng (điều hướng/reload), hoặc đổi tab/home/fullscreen. Thanh mở với ô rỗng không bị đóng bởi điều hướng (không có gì để xóa).
+- `FileDesktopSiteStore`: file > 256 KB coi như hỏng (`read()` null, không đọc/đổi tên khi ghi); `write` và `read` cùng lọc khóa bằng `isValidHost` (không có `/ \ ? # @ %`, ký tự điều khiển/khoảng trắng, ≤ 253).
+- `siteKeyOf`: bỏ dấu chấm cuối trước khi bỏ `www.`; host chứa `%`/ký tự điều khiển → null. `DesktopSitePolicy.setDefault` không ghi khi giá trị không đổi. `loadUrl` chỉ áp chế độ desktop cho URL web.
+- `imePadding` của `FindBar` dựa vào `BrowserBottomBar` (kiểm thủ công API 31/35+). Chưa có `FindInPageInstrumentedTest`/`DesktopSiteInstrumentedTest` (ghi ở FEATURES E05).

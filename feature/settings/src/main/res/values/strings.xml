@@ -40,4 +40,13 @@
     <string name="about_license">License: %1$s</string>
     <string name="about_source">Source code</string>
     <string name="about_libraries_title">Open-source libraries</string>
+    <!-- Spec 015: trang web máy tính -->
+    <string name="settings_desktop_default_title">Request desktop site by default</string>
+    <string name="settings_desktop_default_summary">Applies to sites without an exception. Open tabs aren’t reloaded.</string>
+    <string name="settings_desktop_overrides_title">Per-site exceptions</string>
+    <plurals name="settings_desktop_overrides_count">
+        <item quantity="one">%1$d site</item>
+        <item quantity="other">%1$d sites</item>
+    </plurals>
+    <string name="settings_desktop_clear">Clear exceptions</string>
 </resources>

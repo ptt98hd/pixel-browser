@@ -52,6 +52,8 @@ class FakeEngineSession : EngineSession {
         mainFrameErrorInLoad = false
         dialogGuard.onNewPage()
         _favicon.value = null
+        _findState.value = FindState()
+        val desktop = if (isValidWebUrl(url)) effectiveDesktop(url) else _state.value.isDesktopSite
         _state.update {
             it.copy(
                 url = url,
@@ -60,6 +62,7 @@ class FakeEngineSession : EngineSession {
                 error = null,
                 securityState = SecurityState.Unknown,
                 isAtTop = true,
+                isDesktopSite = desktop,
             )
         }
     }
@@ -71,6 +74,7 @@ class FakeEngineSession : EngineSession {
     override fun goBack() {
         if (closed || index <= 0) return
         pendingNavigation = Navigation.Back
+        _findState.value = FindState()
         sslErrorInLoad = false
         mainFrameErrorInLoad = false
         dialogGuard.onNewPage()
@@ -81,6 +85,7 @@ class FakeEngineSession : EngineSession {
     override fun goForward() {
         if (closed || index >= history.lastIndex) return
         pendingNavigation = Navigation.Forward
+        _findState.value = FindState()
         sslErrorInLoad = false
         mainFrameErrorInLoad = false
         dialogGuard.onNewPage()
@@ -90,6 +95,8 @@ class FakeEngineSession : EngineSession {
 
     override fun reload() {
         if (closed) return
+        reloadCount++
+        _findState.value = FindState()
         pendingNavigation = Navigation.Reload
         cacheMode = CacheMode.Default
         sslErrorInLoad = false
@@ -121,8 +128,16 @@ class FakeEngineSession : EngineSession {
         if (closed) return
         mainFrameErrorInLoad = false
         _favicon.value = null
+        _findState.value = FindState()
         val security = if (sslErrorInLoad) SecurityState.Insecure else SecurityState.Unknown
         _state.update { it.copy(url = url, title = "", isLoading = true, securityState = security, isAtTop = true) }
+        // Điều hướng lịch sử không qua shouldOverrideUrlLoading: chế độ hiệu lực khác hiện tại → đổi và reload một lần.
+        val desktop = effectiveDesktop(url)
+        if (desktop != _state.value.isDesktopSite) {
+            _state.update { it.copy(isDesktopSite = desktop) }
+            reloadCount++
+            cacheMode = CacheMode.NoCache
+        }
     }
 
     override fun scrollToTop() {
@@ -162,8 +177,11 @@ class FakeEngineSession : EngineSession {
         cacheMode = CacheMode.CacheElseNetwork
         sslErrorInLoad = false
         mainFrameErrorInLoad = false
+        _findState.value = FindState()
+        val desktop = effectiveDesktop(history[index])
         _state.update {
             it.copy(
+                isDesktopSite = desktop,
                 url = history[index],
                 title = title,
                 isLoading = true,
@@ -197,6 +215,7 @@ class FakeEngineSession : EngineSession {
         if (closed) return
         closed = true
         _favicon.value = null
+        _findState.value = FindState()
         val pending = requestQueue.requests.value.map { it.id }
         requestQueue.dismissAll()
         pending.forEach { _responses[it] = EngineResponse.Dismiss() }
@@ -291,7 +310,12 @@ class FakeEngineSession : EngineSession {
         isRedirect: Boolean = false,
     ): Boolean {
         if (closed) return true
-        return requestQueue.handleNavigation(_state.value.url, url, isMainFrame, hasUserGesture, isRedirect)
+        val blocked = requestQueue.handleNavigation(_state.value.url, url, isMainFrame, hasUserGesture, isRedirect)
+        if (!blocked && isMainFrame && isValidWebUrl(url)) {
+            val desktop = effectiveDesktop(url)
+            _state.update { it.copy(isDesktopSite = desktop) }
+        }
+        return blocked
     }
 
     // --- Spec 007: nền tảng web ---
@@ -431,6 +455,92 @@ class FakeEngineSession : EngineSession {
     /** Như `onReceivedIcon`; [bitmap] null = xóa favicon. */
     fun simulateFavicon(bitmap: Bitmap?) {
         if (!closed) _favicon.value = bitmap
+    }
+
+    // --- Spec 015 B04: tìm trong trang ---
+
+    private val _findState = MutableStateFlow(FindState())
+    override val findState: StateFlow<FindState> = _findState
+
+    private val _findQueries = mutableListOf<String>()
+    private val _findNextCalls = mutableListOf<Boolean>()
+
+    /** Các truy vấn không rỗng đã gửi tới [find] (đã cắt còn [MAX_FIND_QUERY]), theo thứ tự. */
+    val findQueries: List<String> get() = _findQueries.toList()
+
+    /** Mọi lời gọi [findNext] (trước khi session đóng), theo thứ tự. */
+    val findNextCalls: List<Boolean> get() = _findNextCalls.toList()
+
+    /** Số lần [clearFind] được gọi tường minh (điều hướng chỉ đặt lại [findState], không tính). */
+    var clearFindCalls: Int = 0
+        private set
+
+    override fun find(query: String) {
+        if (closed) return
+        val q = query.take(MAX_FIND_QUERY)
+        if (q.isBlank()) {
+            clearFind()
+            return
+        }
+        _findQueries += q
+        _findState.value = FindState(q, 0, 0, isDone = false)
+    }
+
+    override fun findNext(forward: Boolean) {
+        if (closed) return
+        _findNextCalls += forward
+    }
+
+    override fun clearFind() {
+        if (closed) return
+        clearFindCalls++
+        _findState.value = FindState()
+    }
+
+    /** Như `FindListener.onFindResultReceived`; bỏ qua nếu không có truy vấn đang tìm (sau clear/close). */
+    fun simulateFindResult(
+        active: Int,
+        total: Int,
+        done: Boolean = true,
+    ) {
+        if (closed) return
+        val current = _findState.value
+        if (current.query.isEmpty()) return
+        _findState.value = current.copy(activeIndex = active, total = total, isDone = done)
+    }
+
+    // --- Spec 015 B05: trang web máy tính ---
+
+    private var resolver: DesktopSiteResolver? = null
+    private val tempOverrides = mutableMapOf<String, Boolean>()
+
+    /** Số lần tải lại (kể cả do [setDesktopSite] hoặc đổi chế độ khi điều hướng lịch sử). */
+    var reloadCount: Int = 0
+        private set
+
+    override fun setDesktopSiteResolver(resolver: DesktopSiteResolver?) {
+        if (!closed) this.resolver = resolver
+    }
+
+    override fun setDesktopSite(
+        enabled: Boolean,
+        rememberInSession: Boolean,
+    ) {
+        if (closed || _state.value.isDesktopSite == enabled) return
+        val url = _state.value.url
+        if (rememberInSession) siteKeyOf(url)?.let { tempOverrides[it] = enabled }
+        _state.update { it.copy(isDesktopSite = enabled) }
+        if (isValidWebUrl(url)) {
+            reload()
+            cacheMode = CacheMode.NoCache
+        }
+    }
+
+    /** Chế độ hiệu lực của [url]: ngoại lệ tạm của session → resolver → di động. */
+    private fun effectiveDesktop(url: String): Boolean {
+        if (resolver == null && tempOverrides.isEmpty()) return false
+        val key = siteKeyOf(url)
+        return key?.let(tempOverrides::get) ?: resolver?.isDesktop(key) ?: false
     }
 
     private companion object {

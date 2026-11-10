@@ -55,4 +55,12 @@ data class BrowserActions(
     val onEditBookmark: (Long) -> Unit = {},
     /** "Hoàn tác" trên snackbar sau khi xóa dấu trang từ hộp thoại sửa (spec 013 AC20). */
     val onUndoBookmarkRemoved: () -> Unit = {},
+    /** Menu "Tìm trong trang" (spec 015 B04). */
+    val onOpenFind: () -> Unit = {},
+    val onFindQueryChange: (String) -> Unit = {},
+    /** true = kết quả kế tiếp, false = kết quả trước. */
+    val onFindNext: (Boolean) -> Unit = {},
+    val onCloseFind: () -> Unit = {},
+    /** Menu "Trang web máy tính" (spec 015 B05). */
+    val onToggleDesktopSite: () -> Unit = {},
 )

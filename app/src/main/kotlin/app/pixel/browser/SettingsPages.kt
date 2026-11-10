@@ -6,6 +6,7 @@ import androidx.compose.ui.res.stringResource
 import app.pixel.browser.feature.settings.AboutPage
 import app.pixel.browser.feature.settings.AppInfo
 import app.pixel.browser.feature.settings.AppearancePage
+import app.pixel.browser.feature.settings.DesktopSiteSettingsPage
 import app.pixel.browser.feature.settings.R
 import app.pixel.browser.feature.settings.SearchEnginePage
 import app.pixel.browser.feature.settings.SettingsPage
@@ -29,6 +30,7 @@ fun settingsRegistry(
                 listOf(
                     searchEnginePage(app),
                     appearancePage(app),
+                    desktopSitePage(app),
                     aboutPage(info),
                 ),
     )
@@ -59,6 +61,15 @@ private fun appearancePage(app: PixelBrowserApplication) =
             val settings by app.themeSettings.collectAsState()
             AppearancePage(settings, onChange = { next -> app.updateTheme { next } })
         },
+    )
+
+private fun desktopSitePage(app: PixelBrowserApplication) =
+    SettingsPage(
+        id = SettingsPageIds.DESKTOP_SITE,
+        sectionId = SettingsSections.SITE,
+        order = 1,
+        title = { stringResource(R.string.settings_page_desktop_site) },
+        content = { DesktopSiteSettingsPage(app.desktopSites) },
     )
 
 private fun aboutPage(info: AppInfo) =

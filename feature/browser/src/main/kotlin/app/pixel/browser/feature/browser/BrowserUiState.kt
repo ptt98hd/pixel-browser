@@ -15,6 +15,14 @@ data class TabItem(
     val isPrivate: Boolean = false,
 )
 
+/** Trạng thái thanh tìm trong trang (spec 015). [current] 1-based, 0 khi [total] == 0. */
+data class FindUiState(
+    val query: String,
+    val current: Int,
+    val total: Int,
+    val isSearching: Boolean,
+)
+
 /** Trạng thái chrome trình duyệt (spec 005). [url]/[title]/... lấy trực tiếp từ session của tab được chọn. */
 data class BrowserUiState(
     val url: String = "",
@@ -51,4 +59,12 @@ data class BrowserUiState(
     /** Trang hiện tại đã có dấu trang (so theo `urlKey`). */
     val isBookmarked: Boolean = false,
     val bookmarkId: Long? = null,
+    /** Có thể mở thanh tìm: tab web, không fullscreen (spec 015 B04). */
+    val canFind: Boolean = false,
+    /** Thanh tìm trong trang; null = đóng (spec 015 B04). */
+    val find: FindUiState? = null,
+    /** Có thể bật/tắt trang web máy tính: URL web hợp lệ, không ở home (spec 015 B05). */
+    val canToggleDesktopSite: Boolean = false,
+    /** Trang đang xem ở chế độ máy tính (spec 015 B05). */
+    val isDesktopSite: Boolean = false,
 )

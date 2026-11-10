@@ -87,6 +87,18 @@ fun BrowserTopBar(
                 } else {
                     SecurityIcon(state.securityState)
                     UrlDisplayText(state.displayHost, actions.onStartEditing, Modifier.weight(1f))
+                    if (state.isDesktopSite && !state.isHome) {
+                        Icon(
+                            imageVector = DesktopIcon,
+                            contentDescription = stringResource(R.string.browser_desktop_indicator),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier =
+                                Modifier
+                                    .padding(horizontal = 8.dp)
+                                    .size(20.dp)
+                                    .testTag(BrowserTestTags.DESKTOP_INDICATOR),
+                        )
+                    }
                     if (state.isBookmarked && !state.isHome) {
                         Icon(
                             imageVector = Icons.Filled.Star,

@@ -104,4 +104,14 @@
     <string name="browser_message_bookmark_added">Bookmark added</string>
     <string name="browser_message_bookmark_failed">Couldn’t save the bookmark</string>
     <string name="browser_message_bookmark_removed">Bookmark removed</string>
+    <!-- Spec 015: tìm trong trang, trang web máy tính -->
+    <string name="browser_find_in_page">Find in page</string>
+    <string name="browser_find_previous">Previous result</string>
+    <string name="browser_find_next">Next result</string>
+    <string name="browser_find_close">Close</string>
+    <string name="browser_find_not_found">No results found</string>
+    <string name="browser_find_searching">Searching…</string>
+    <string name="browser_find_position">Result %1$d of %2$d</string>
+    <string name="browser_desktop_site">Desktop site</string>
+    <string name="browser_desktop_indicator">Viewing desktop site</string>
 </resources>

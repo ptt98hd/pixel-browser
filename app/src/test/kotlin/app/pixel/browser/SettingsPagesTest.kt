@@ -35,14 +35,19 @@ class SettingsPagesTest {
     @Test
     fun ac8_realPagesAreNotPlaceholders_placeholdersAreFlagged() {
         val r = registry()
-        listOf(SettingsPageIds.SEARCH_ENGINE, SettingsPageIds.THEME, SettingsPageIds.ABOUT).forEach {
+        // Spec 015 AC22: trang desktop_site thật thay trang giữ chỗ của spec 014.
+        listOf(
+            SettingsPageIds.SEARCH_ENGINE,
+            SettingsPageIds.THEME,
+            SettingsPageIds.DESKTOP_SITE,
+            SettingsPageIds.ABOUT,
+        ).forEach {
             assertEquals(it, false, r.page(it)!!.isPlaceholder)
         }
         listOf(
             SettingsPageIds.CLEAR_DATA,
             SettingsPageIds.SAFE_BROWSING,
             SettingsPageIds.SITE_SETTINGS,
-            SettingsPageIds.DESKTOP_SITE,
         ).forEach { assertEquals(it, true, r.page(it)!!.isPlaceholder) }
     }
 

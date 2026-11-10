@@ -103,4 +103,14 @@
     <string name="browser_message_bookmark_added">Đã thêm dấu trang</string>
     <string name="browser_message_bookmark_failed">Không lưu được dấu trang</string>
     <string name="browser_message_bookmark_removed">Đã xóa dấu trang</string>
+    <!-- Spec 015: tìm trong trang, trang web máy tính -->
+    <string name="browser_find_in_page">Tìm trong trang</string>
+    <string name="browser_find_previous">Kết quả trước</string>
+    <string name="browser_find_next">Kết quả sau</string>
+    <string name="browser_find_close">Đóng</string>
+    <string name="browser_find_not_found">Không tìm thấy</string>
+    <string name="browser_find_searching">Đang tìm…</string>
+    <string name="browser_find_position">Kết quả %1$d trên %2$d</string>
+    <string name="browser_desktop_site">Trang web máy tính</string>
+    <string name="browser_desktop_indicator">Đang xem trang máy tính</string>
 </resources>

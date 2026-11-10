@@ -17,12 +17,14 @@ object GestureGate {
         systemGestureNav: Boolean,
     ): GestureAvailability {
         val blocked = overlayOpen || state.isEditingUrl || state.isFullscreen || state.pendingRequest != null
+        val findOpen = state.find != null
         if (blocked) return GestureAvailability(false, false, false, false)
         return GestureAvailability(
-            edgeBack = !systemGestureNav && state.canGoBack,
-            edgeForward = !systemGestureNav && state.canGoForward,
+            edgeBack = !systemGestureNav && state.canGoBack && !findOpen,
+            edgeForward = !systemGestureNav && state.canGoForward && !findOpen,
             tabSwipe = state.tabCount > 1,
-            pullToRefresh = !state.isHome,
+            // Spec 015: tải lại sẽ xóa kết quả tìm nên tắt khi thanh tìm mở.
+            pullToRefresh = !state.isHome && !findOpen,
         )
     }
 }

@@ -30,5 +30,10 @@ object SettingsTestTags {
     const val ABOUT_SOURCE = "about_source"
     const val ABOUT_LICENSES_LIST = "about_licenses_list"
 
+    // Spec 015
+    const val DESKTOP_DEFAULT = "settings_desktop_default"
+    const val DESKTOP_OVERRIDES = "settings_desktop_overrides"
+    const val DESKTOP_CLEAR = "settings_desktop_clear"
+
     fun aboutLicense(index: Int) = "about_license_$index"
 }

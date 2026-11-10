@@ -12,7 +12,7 @@ enum class SecurityState { Unknown, Secure, Insecure }
  * Điều hướng thường dùng [Default] (`LOAD_DEFAULT`); điều hướng lịch sử (back/forward/restore)
  * dùng [CacheElseNetwork] (`LOAD_CACHE_ELSE_NETWORK`).
  */
-enum class CacheMode { Default, CacheElseNetwork }
+enum class CacheMode { Default, CacheElseNetwork, NoCache }
 
 data class EngineState(
     val url: String = "",
@@ -28,6 +28,8 @@ data class EngineState(
     val isFullscreen: Boolean = false,
     /** scrollY của root == 0; true khi bắt đầu tải trang mới (spec 008 AC1). */
     val isAtTop: Boolean = true,
+    /** Trang đang xem ở chế độ máy tính (spec 015 B05). */
+    val isDesktopSite: Boolean = false,
 )
 
 /** Trang main-frame đã tải xong (spec 012). [isError]: lỗi mạng/SSL/HTTP >= 400 ở main frame trong lần tải này. */
@@ -107,6 +109,34 @@ interface EngineSession {
 
     /** Phát mỗi khi trang main-frame tải xong (spec 012). Replay 0, không phát sau [close]. */
     val pageFinished: SharedFlow<PageFinished>
+
+    // --- Spec 015 B04: tìm trong trang ---
+
+    val findState: StateFlow<FindState>
+
+    /** Tìm [query] (rỗng/khoảng trắng → như [clearFind]); cắt còn [MAX_FIND_QUERY]. Không làm gì sau [close]. */
+    fun find(query: String)
+
+    /** Nhảy tới kết quả kế tiếp/trước đó (vòng lại ở hai đầu); no-op nếu không có kết quả. */
+    fun findNext(forward: Boolean)
+
+    /** Xóa tô sáng và đặt `findState = FindState()`. */
+    fun clearFind()
+
+    // --- Spec 015 B05: trang web máy tính ---
+
+    /** Resolver hỏi ở mỗi điều hướng main-frame; null = luôn di động. */
+    fun setDesktopSiteResolver(resolver: DesktopSiteResolver?)
+
+    /**
+     * Người dùng bật/tắt thủ công: ghi ngoại lệ tạm của session cho site hiện tại (nếu có `siteKey`), áp dụng
+     * ngay và tải lại trang hiện tại (nếu là URL web) với [CacheMode.NoCache]. No-op nếu chế độ không đổi.
+     * [rememberInSession] = false: không ghi ngoại lệ tạm (người gọi đã lưu lựa chọn vào resolver, vd. tab thường).
+     */
+    fun setDesktopSite(
+        enabled: Boolean,
+        rememberInSession: Boolean = true,
+    )
 }
 
 fun isValidWebUrl(url: String): Boolean {

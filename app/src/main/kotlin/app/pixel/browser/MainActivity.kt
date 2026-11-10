@@ -1,7 +1,6 @@
 package app.pixel.browser
 
 import android.content.Intent
-import android.content.MutableContextWrapper
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -27,7 +26,6 @@ import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import app.pixel.browser.core.data.ThemeSettings
-import app.pixel.browser.core.engine.WebViewEngineSession
 import app.pixel.browser.core.history.HistoryClearer
 import app.pixel.browser.core.tabs.TabManager
 import app.pixel.browser.core.ui.PixelTheme
@@ -69,7 +67,7 @@ class MainActivity : ComponentActivity() {
                 val appContext = app
                 BrowserViewModel(
                     TabManager(
-                        sessionFactory = { WebViewEngineSession(MutableContextWrapper(appContext)) },
+                        sessionFactory = appContext.sessionFactory,
                         store = appContext.tabStore,
                     ),
                     // Application context: ViewModel sống lâu hơn Activity (launcher thêm FLAG_ACTIVITY_NEW_TASK).
@@ -81,6 +79,7 @@ class MainActivity : ComponentActivity() {
                     suggestionProvider = appContext.suggestionProvider,
                     pageVisits = appContext.historyRecorder,
                     bookmarks = appContext.bookmarkRepository,
+                    desktopSites = appContext.desktopSites,
                 )
             }
         }

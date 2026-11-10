@@ -26,8 +26,8 @@ Trạng thái: ⬜ chưa làm · 🟨 đang làm · ✅ xong. Mỗi feature có 
 | B01 | Lịch sử duyệt web (tìm, xóa theo khoảng thời gian), gợi ý omnibox từ lịch sử/bookmark (spec 012; gợi ý bookmark: spec 013). Ghi chú: `FileFaviconStore` (AC22) đã có nhưng chưa nối vào UI (hàng lịch sử dùng ô chữ cái); phần lịch sử + gợi ý đã xong | ✅ |
 | B02 | Bookmark + thư mục, import/export (HTML) (spec 013) | ✅ |
 | B03 | Downloads: parallel multi-segment, resume/pause, notification, quản lý file, cài APK an toàn | ⬜ |
-| B04 | Find in page (spec 015) | 🟨 |
-| B05 | Request desktop site (toàn cục + theo site) (spec 015; trang cài đặt toàn cục dùng khung của spec 014) | 🟨 |
+| B04 | Find in page (spec 015) | ✅ |
+| B05 | Request desktop site (toàn cục + theo site) (spec 015; trang cài đặt toàn cục dùng khung của spec 014) | ✅ |
 | B06 | Incognito (cookie/cache/history tách biệt) | ⬜ |
 | B07 | Site settings: cookies, JS, popup, quyền theo site, zoom/cỡ chữ | ⬜ |
 | B08 | Search engine (Google, DuckDuckGo, Brave, Bing, tùy chỉnh) (spec 014, kèm khung Cài đặt dùng chung cho B07/B12/B14) | ✅ |
@@ -66,7 +66,7 @@ Trạng thái: ⬜ chưa làm · 🟨 đang làm · ✅ xong. Mỗi feature có 
 | E02 | Keystore release cố định + workflow release ký APK, verify bằng apksigner, cài thử emulator | ✅ |
 | E03 | Split ABI + universal APK, versionCode theo tag | ✅ |
 | E04 | Metadata F-Droid (fastlane, flavor fdroid không có thư viện non-free), reproducible build | ⬜ |
-| E05 | Hiệu năng (startup, memory nhiều tab), crash-safe, không telemetry; WebView lười cho tab home (không tạo WebView khi chưa có trang, spec 010); PullToRefreshInstrumentedTest + kiểm chứng predictive back/overscroll trên máy thật (spec 008) | ⬜ |
+| E05 | Hiệu năng (startup, memory nhiều tab), crash-safe, không telemetry; WebView lười cho tab home (không tạo WebView khi chưa có trang, spec 010); PullToRefreshInstrumentedTest + kiểm chứng predictive back/overscroll trên máy thật (spec 008); FindInPageInstrumentedTest + DesktopSiteInstrumentedTest (máy thật, spec 015) | ⬜ |
 | E06 | Docs: README, CONTRIBUTING, PRIVACY, changelog tự sinh | ⬜ |
 
 ## Milestone → feature

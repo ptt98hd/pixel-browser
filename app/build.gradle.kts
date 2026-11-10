@@ -74,6 +74,7 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(testFixtures(project(":core:data")))
+    testImplementation(testFixtures(project(":core:engine")))
     testImplementation(testFixtures(project(":core:history")))
     testImplementation(testFixtures(project(":core:bookmarks")))
     testImplementation(platform(libs.compose.bom))

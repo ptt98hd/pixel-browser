@@ -1,6 +1,7 @@
 package app.pixel.browser
 
 import android.app.Application
+import android.content.MutableContextWrapper
 import android.util.Log
 import androidx.annotation.MainThread
 import androidx.annotation.VisibleForTesting
@@ -19,6 +20,11 @@ import app.pixel.browser.core.data.home.HomeFiles
 import app.pixel.browser.core.data.search.DataStoreSearchSettingsStore
 import app.pixel.browser.core.data.search.SearchSettings
 import app.pixel.browser.core.data.search.SearchSettingsStore
+import app.pixel.browser.core.data.site.DesktopSiteData
+import app.pixel.browser.core.data.site.DesktopSitePolicy
+import app.pixel.browser.core.data.site.DesktopSiteStore
+import app.pixel.browser.core.data.site.FileDesktopSiteStore
+import app.pixel.browser.core.engine.WebViewEngineSession
 import app.pixel.browser.core.history.HistoryRecorder
 import app.pixel.browser.core.history.HistoryRetention
 import app.pixel.browser.core.history.HistoryStore
@@ -31,6 +37,7 @@ import app.pixel.browser.core.omnibox.SearchEngine
 import app.pixel.browser.core.omnibox.SearchEngines
 import app.pixel.browser.core.omnibox.SuggestionAggregator
 import app.pixel.browser.core.omnibox.SuggestionProvider
+import app.pixel.browser.core.tabs.EngineSessionFactory
 import app.pixel.browser.core.tabs.FileTabSnapshotStore
 import app.pixel.browser.core.tabs.TabSnapshotStore
 import app.pixel.browser.core.ui.NightModeController
@@ -70,6 +77,66 @@ class PixelBrowserApplication : Application() {
      */
     val thumbnails: BitmapTabThumbnailRepository by lazy {
         BitmapTabThumbnailRepository(File(cacheDir, "thumbnails"), Dispatchers.IO)
+    }
+
+    private val desktopLock = Any()
+    private var desktopPolicy: DesktopSitePolicy? = null
+    private var baseSessionFactory = EngineSessionFactory { WebViewEngineSession(MutableContextWrapper(this)) }
+
+    /**
+     * Spec 015: chính sách desktop site (`filesDir/site/desktop.json`), đọc đồng bộ ở lần truy cập đầu (tab khôi
+     * phục cần câu trả lời ngay ở lần tải đầu); ghi qua [ioScope].
+     */
+    val desktopSites: DesktopSitePolicy
+        get() =
+            synchronized(desktopLock) {
+                desktopPolicy ?: createDesktopPolicy(FileDesktopSiteStore(File(filesDir, "site/desktop.json")), ioScope)
+            }
+
+    /** Spec 015: test gắn [store] (đọc đồng bộ) và ghi qua [scope]; mặc định `FileDesktopSiteStore` + [ioScope]. */
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    fun bindDesktopSiteStore(
+        store: DesktopSiteStore,
+        scope: CoroutineScope = ioScope,
+    ) {
+        synchronized(desktopLock) { createDesktopPolicy(store, scope) }
+    }
+
+    private fun createDesktopPolicy(
+        store: DesktopSiteStore,
+        scope: CoroutineScope,
+    ): DesktopSitePolicy {
+        val policy =
+            DesktopSitePolicy(store.read() ?: DesktopSiteData()) { data ->
+                scope.launch {
+                    try {
+                        store.write(data)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Không ghi được desktop.json", e)
+                    }
+                }
+            }
+        desktopPolicy = policy
+        return policy
+    }
+
+    /**
+     * Spec 015: factory session cho mọi tab (kể cả khôi phục và popup); đặt `DesktopSiteResolver` từ [desktopSites]
+     * ngay khi tạo. Test thay session gốc bằng [bindBaseSessionFactory].
+     */
+    val sessionFactory: EngineSessionFactory =
+        EngineSessionFactory {
+            baseSessionFactory.create().also { session ->
+                session.setDesktopSiteResolver { siteKey -> desktopSites.resolve(siteKey) }
+            }
+        }
+
+    /** Spec 015: test thay nguồn session gốc (mặc định `WebViewEngineSession`) bằng Fake. */
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    fun bindBaseSessionFactory(factory: EngineSessionFactory) {
+        baseSessionFactory = factory
     }
 
     /** Spec 012: kho lịch sử (`history.db`); gắn qua [bindHistoryStore]. */

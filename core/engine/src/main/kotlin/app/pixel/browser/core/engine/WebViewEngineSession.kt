@@ -37,6 +37,19 @@ class WebViewEngineSession(
 ) : EngineSession {
     private val pixel = PixelWebView(context)
     val webView: WebView = pixel
+
+    /** Giá trị WebSettings lúc khởi tạo, để chế độ di động khôi phục đúng (spec 015 AC17). */
+    private val initialSettings =
+        webView.settings.let {
+            InitialSettings(
+                it.userAgentString,
+                it.useWideViewPort,
+                it.loadWithOverviewMode,
+                it.supportZoom(),
+                it.builtInZoomControls,
+                it.displayZoomControls,
+            )
+        }
     private val _state = MutableStateFlow(EngineState())
     override val state: StateFlow<EngineState> = _state
 
@@ -63,6 +76,7 @@ class WebViewEngineSession(
     init {
         pixel.owner = this
         configure(webView.settings)
+        webView.setFindListener { active, total, done -> dispatchFindResult(active, total, done) }
         webView.webViewClient =
             object : WebViewClient() {
                 override fun onPageStarted(
@@ -263,6 +277,9 @@ class WebViewEngineSession(
         mainFrameErrorInLoad = false
         dialogGuard.onNewPage()
         _favicon.value = null
+        resetFind()
+        modeReloadedFor = null
+        if (isValidWebUrl(url)) applyEffectiveDesktop(url)
         _state.update {
             it.copy(
                 url = url,
@@ -281,6 +298,7 @@ class WebViewEngineSession(
         if (isClosed || !webView.canGoBack()) return
         sslErrorInLoad = false
         mainFrameErrorInLoad = false
+        resetFind()
         webView.settings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
         webView.goBack()
     }
@@ -289,6 +307,7 @@ class WebViewEngineSession(
         if (isClosed || !webView.canGoForward()) return
         sslErrorInLoad = false
         mainFrameErrorInLoad = false
+        resetFind()
         webView.settings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
         webView.goForward()
     }
@@ -298,6 +317,7 @@ class WebViewEngineSession(
         sslErrorInLoad = false
         mainFrameErrorInLoad = false
         dialogGuard.onNewPage()
+        resetFind()
         _state.update { it.copy(isLoading = true, progress = 0, isAtTop = true) }
         webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
         webView.reload()
@@ -387,6 +407,7 @@ class WebViewEngineSession(
         handleHideCustomView()
         isClosed = true
         _favicon.value = null
+        _findState.value = FindState()
         requestQueue.dismissAll()
         pendingPermissions.clear()
         pendingGeolocation.clear()
@@ -397,6 +418,7 @@ class WebViewEngineSession(
         webView.webViewClient = WebViewClient()
         webView.webChromeClient = null
         webView.setDownloadListener(null)
+        webView.setFindListener(null)
         pixel.owner = null
         webView.destroy()
     }
@@ -407,8 +429,16 @@ class WebViewEngineSession(
         mainFrameErrorInLoad = false
         dialogGuard.onNewPage()
         _favicon.value = null
+        resetFind()
         val security = if (sslErrorInLoad) SecurityState.Insecure else SecurityState.Unknown
         _state.update { it.copy(url = url, title = "", isLoading = true, securityState = security, isAtTop = true) }
+        // Điều hướng lịch sử/restore không qua shouldOverrideUrlLoading: đổi chế độ rồi reload một lần (AC19).
+        val desktop = effectiveDesktop(url)
+        if (desktop != _state.value.isDesktopSite && modeReloadedFor != url) {
+            modeReloadedFor = url
+            applyDesktopMode(desktop)
+            reloadNoCache()
+        }
     }
 
     fun dispatchPageFinished(url: String) {
@@ -458,7 +488,13 @@ class WebViewEngineSession(
         isRedirect: Boolean,
     ): Boolean {
         if (isClosed) return true
-        return requestQueue.handleNavigation(_state.value.url, url, isMainFrame, hasGesture, isRedirect)
+        val blocked = requestQueue.handleNavigation(_state.value.url, url, isMainFrame, hasGesture, isRedirect)
+        // Chỉ URL web đổi chế độ: javascript:/data:/blob: không phải điều hướng sang site khác.
+        if (!blocked && isMainFrame && isValidWebUrl(url)) {
+            modeReloadedFor = null
+            applyEffectiveDesktop(url)
+        }
+        return blocked
     }
 
     override val fullscreenView: View?
@@ -576,6 +612,118 @@ class WebViewEngineSession(
     fun dispatchReceivedIcon(bitmap: Bitmap) {
         if (!isClosed) _favicon.value = bitmap
     }
+
+    // --- Spec 015 B04: tìm trong trang ---
+
+    private val _findState = MutableStateFlow(FindState())
+    override val findState: StateFlow<FindState> = _findState
+
+    override fun find(query: String) {
+        if (isClosed) return
+        val q = query.take(MAX_FIND_QUERY)
+        if (q.isBlank()) {
+            clearFind()
+            return
+        }
+        _findState.value = FindState(q, 0, 0, isDone = false)
+        webView.findAllAsync(q)
+    }
+
+    override fun findNext(forward: Boolean) {
+        if (isClosed || _findState.value.total == 0) return
+        webView.findNext(forward)
+    }
+
+    override fun clearFind() {
+        if (isClosed) return
+        resetFind()
+    }
+
+    private fun resetFind() {
+        _findState.value = FindState()
+        webView.clearMatches()
+    }
+
+    /** Điểm vào của `WebView.FindListener` (spec 015 AC1/AC3). Bỏ qua khi không có truy vấn (sau clear/close). */
+    fun dispatchFindResult(
+        activeMatchOrdinal: Int,
+        numberOfMatches: Int,
+        isDoneCounting: Boolean,
+    ) {
+        if (isClosed) return
+        val current = _findState.value
+        if (current.query.isEmpty()) return
+        _findState.value =
+            current.copy(activeIndex = activeMatchOrdinal, total = numberOfMatches, isDone = isDoneCounting)
+    }
+
+    // --- Spec 015 B05: trang web máy tính ---
+
+    private var desktopResolver: DesktopSiteResolver? = null
+    private val tempOverrides = mutableMapOf<String, Boolean>()
+
+    /** URL đã reload một lần để đổi chế độ khi điều hướng lịch sử (chống vòng lặp). */
+    private var modeReloadedFor: String? = null
+
+    override fun setDesktopSiteResolver(resolver: DesktopSiteResolver?) {
+        if (!isClosed) desktopResolver = resolver
+    }
+
+    override fun setDesktopSite(
+        enabled: Boolean,
+        rememberInSession: Boolean,
+    ) {
+        if (isClosed || _state.value.isDesktopSite == enabled) return
+        val url = _state.value.url
+        if (rememberInSession) siteKeyOf(url)?.let { tempOverrides[it] = enabled }
+        applyDesktopMode(enabled)
+        if (isValidWebUrl(url)) reloadNoCache()
+    }
+
+    /** Chế độ hiệu lực của [url]: ngoại lệ tạm của session → resolver → di động. */
+    private fun effectiveDesktop(url: String): Boolean {
+        val key = siteKeyOf(url)
+        return key?.let(tempOverrides::get) ?: desktopResolver?.isDesktop(key) ?: false
+    }
+
+    private fun applyDesktopMode(desktop: Boolean) {
+        val s = webView.settings
+        if (desktop) {
+            s.userAgentString = DesktopUserAgent.derive(initialSettings.userAgent)
+            s.useWideViewPort = true
+            s.loadWithOverviewMode = true
+            s.setSupportZoom(true)
+            s.builtInZoomControls = true
+            s.displayZoomControls = false
+        } else {
+            s.userAgentString = null
+            s.useWideViewPort = initialSettings.wideViewPort
+            s.loadWithOverviewMode = initialSettings.overviewMode
+            s.setSupportZoom(initialSettings.supportZoom)
+            s.builtInZoomControls = initialSettings.builtInZoomControls
+            s.displayZoomControls = initialSettings.displayZoomControls
+        }
+        _state.update { it.copy(isDesktopSite = desktop) }
+    }
+
+    private fun applyEffectiveDesktop(url: String) {
+        val desktop = effectiveDesktop(url)
+        if (desktop != _state.value.isDesktopSite) applyDesktopMode(desktop)
+    }
+
+    private fun reloadNoCache() {
+        reload()
+        webView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
+    }
+
+    private class InitialSettings(
+        val userAgent: String,
+        val wideViewPort: Boolean,
+        val overviewMode: Boolean,
+        val supportZoom: Boolean,
+        val builtInZoomControls: Boolean,
+        val displayZoomControls: Boolean,
+    )
 
     private val pageOrigin: String get() = originOf(_state.value.url)
 
