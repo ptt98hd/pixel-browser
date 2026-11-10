@@ -48,4 +48,17 @@
         <item quantity="other">%1$d trang</item>
     </plurals>
     <string name="settings_desktop_clear">Xóa ngoại lệ</string>
+    <!-- Spec 016: duyệt ẩn danh -->
+    <string name="settings_page_private_browsing">Duyệt ẩn danh</string>
+    <string name="settings_private_screenshots">Chặn chụp màn hình</string>
+    <string name="settings_private_screenshots_summary">Ẩn tab ẩn danh khỏi ảnh chụp màn hình, quay màn hình và màn hình ứng dụng gần đây</string>
+    <string name="settings_private_autoclose_title">Đóng tab ẩn danh sau khi rời ứng dụng</string>
+    <string name="settings_private_autoclose_never">Không bao giờ</string>
+    <string name="settings_private_autoclose_5">Sau 5 phút</string>
+    <string name="settings_private_autoclose_30">Sau 30 phút</string>
+    <string name="settings_private_guaranteed_title">Tab ẩn danh làm gì</string>
+    <string name="settings_private_guaranteed">Cookie, bộ nhớ trang, bộ đệm và quyền của tab ẩn danh được tách khỏi tab thường và bị xóa khi đóng tab ẩn danh cuối cùng. Tab ẩn danh không để lại lịch sử, ảnh thu nhỏ hay tab đã lưu trên đĩa, và bàn phím được đề nghị không học từ nội dung bạn gõ. Ảnh chụp màn hình và bản xem trước ứng dụng gần đây bị chặn trừ khi bạn tắt tùy chọn này.</string>
+    <string name="settings_private_not_guaranteed_title">Tab ẩn danh không che được</string>
+    <string name="settings_private_not_guaranteed">Nhà mạng, cơ quan và các trang web bạn truy cập vẫn thấy hoạt động của bạn. Tệp đã tải xuống vẫn ở trên thiết bị và dấu trang bạn thêm vẫn được lưu. Duyệt web an toàn, nếu bật, vẫn gửi một phần mã băm URL tới Google. Bộ nhớ và báo cáo lỗi của hệ điều hành nằm ngoài khả năng kiểm soát của chúng tôi.</string>
+    <string name="settings_private_unavailable">Không dùng được tab ẩn danh vì phiên bản Android System WebView này không hỗ trợ hồ sơ tách biệt. Hãy cập nhật Android System WebView để dùng.</string>
 </resources>

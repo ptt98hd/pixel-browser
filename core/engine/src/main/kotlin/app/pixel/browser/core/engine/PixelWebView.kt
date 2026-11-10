@@ -3,6 +3,8 @@ package app.pixel.browser.core.engine
 import android.annotation.SuppressLint
 import android.content.Context
 import android.view.MotionEvent
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
 import android.webkit.WebView
 
 /**
@@ -17,6 +19,9 @@ class PixelWebView(
     context: Context,
 ) : WebView(context) {
     internal var owner: WebViewEngineSession? = null
+
+    /** Session ẩn danh (spec 016): đề nghị bàn phím không học từ ô nhập. Đặt ngay sau khi tạo. */
+    internal var isPrivate: Boolean = false
     private val fallback = TopPullFallback(FALLBACK_DP * context.resources.displayMetrics.density)
     private var lastY = 0f
 
@@ -39,6 +44,13 @@ class PixelWebView(
         super.onOverScrolled(scrollX, scrollY, clampedX, clampedY)
         if (clampedY && scrollY == 0) fallback.onOverscroll()
         owner?.dispatchOverScrolled(scrollY, clampedY)
+    }
+
+    /** Session ẩn danh: đề nghị bàn phím không học từ ô nhập (spec 016 AC7). */
+    override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
+        val connection = super.onCreateInputConnection(outAttrs)
+        if (isPrivate) outAttrs.imeOptions = privateImeOptions(outAttrs.imeOptions)
+        return connection
     }
 
     @SuppressLint("ClickableViewAccessibility")

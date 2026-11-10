@@ -1,6 +1,7 @@
 package app.pixel.browser.feature.browser
 
 import app.pixel.browser.core.bookmarks.BookmarkRepository
+import app.pixel.browser.core.data.privacy.PrivateAutoClose
 import app.pixel.browser.core.engine.EngineSession
 import app.pixel.browser.core.engine.FakeEngineSession
 import app.pixel.browser.core.history.PageVisit
@@ -74,7 +75,14 @@ class SpySession(
 class SpySessionFactory : EngineSessionFactory {
     val created = mutableListOf<SpySession>()
 
-    override fun create(): EngineSession = SpySession().also { created += it }
+    /** Giá trị `isPrivate` của từng lời gọi [create] (spec 016). */
+    val requestedPrivate = mutableListOf<Boolean>()
+
+    override fun create(isPrivate: Boolean): EngineSession =
+        SpySession(FakeEngineSession(isPrivate)).also {
+            created += it
+            requestedPrivate += isPrivate
+        }
 }
 
 class InMemoryStore : TabSnapshotStore {
@@ -153,6 +161,10 @@ class FakeTabThumbnailRepository : TabThumbnailRepository {
         ) : Call
 
         data object ClearDisk : Call
+
+        data class Purge(
+            val tabIds: Set<String>,
+        ) : Call
     }
 
     var selectedTabId: () -> String? = { null }
@@ -161,6 +173,7 @@ class FakeTabThumbnailRepository : TabThumbnailRepository {
     val captures: List<Call.Capture> get() = calls.filterIsInstance<Call.Capture>()
     val removed: List<String> get() = calls.filterIsInstance<Call.Remove>().map { it.tabId }
     val retains: List<Call.RetainOnly> get() = calls.filterIsInstance<Call.RetainOnly>()
+    val purges: List<Call.Purge> get() = calls.filterIsInstance<Call.Purge>()
 
     override fun capture(
         tabId: String,
@@ -180,6 +193,10 @@ class FakeTabThumbnailRepository : TabThumbnailRepository {
 
     override fun clearDisk() {
         calls += Call.ClearDisk
+    }
+
+    override fun purge(tabIds: Set<String>) {
+        calls += Call.Purge(tabIds)
     }
 }
 
@@ -208,15 +225,34 @@ class BrowserFixture(
     val pageVisits: PageVisitRecorder = PageVisitRecorder.None,
     maxLiveSessions: Int = TabManager.DEFAULT_MAX_LIVE_SESSIONS,
     val bookmarks: BookmarkRepository? = null,
+    /** Spec 016: bộ nhớ quyền riêng của tab ẩn danh. */
+    val privateMemory: SitePermissionMemory = SitePermissionMemory(),
+    /** Spec 016: `MULTI_PROFILE` có được hỗ trợ không (đọc mỗi lần, test đổi được). */
+    privateAvailable: () -> Boolean = { true },
+    /** Spec 016: guard tự đóng tab ẩn danh (đồng hồ/cài đặt do test điều khiển). */
+    val autoCloseGuard: PrivateAutoCloseGuard = PrivateAutoCloseGuard({ 0L }, { PrivateAutoClose.Never }),
 ) {
     val factory = SpySessionFactory()
-    val tabManager = TabManager(factory, store, maxLiveSessions)
+
+    /** Số lần `TabManager` báo hết tab ẩn danh (cũng được chuyển cho ViewModel như `:app` sẽ nối). */
+    var privateEmptyCalls = 0
+        private set
+    val tabManager: TabManager =
+        TabManager(
+            factory,
+            store,
+            maxLiveSessions,
+            onPrivateTabsEmpty = {
+                privateEmptyCalls++
+                viewModel.onPrivateTabsEmpty()
+            },
+        )
 
     // Nối FakeTabThumbnailRepository với tab đang chọn trước khi ViewModel được tạo.
     @Suppress("unused")
     private val boundThumbnails =
         (thumbnails as? FakeTabThumbnailRepository)?.also { it.selectedTabId = { tabManager.selectedTabId.value } }
-    val viewModel =
+    val viewModel: BrowserViewModel =
         BrowserViewModel(
             tabManager,
             externalAppLauncher = launcher,
@@ -226,6 +262,9 @@ class BrowserFixture(
             thumbnails = thumbnails,
             pageVisits = pageVisits,
             bookmarks = bookmarks,
+            privateAvailable = privateAvailable,
+            privateMemory = privateMemory,
+            privateAutoClose = autoCloseGuard,
         )
 
     fun selected(): SpySession = tabManager.selectedSpy()
@@ -247,6 +286,9 @@ class BrowserFixture(
             pageVisits: PageVisitRecorder = PageVisitRecorder.None,
             maxLiveSessions: Int = TabManager.DEFAULT_MAX_LIVE_SESSIONS,
             bookmarks: BookmarkRepository? = null,
+            privateMemory: SitePermissionMemory = SitePermissionMemory(),
+            privateAvailable: () -> Boolean = { true },
+            autoCloseGuard: PrivateAutoCloseGuard = PrivateAutoCloseGuard({ 0L }, { PrivateAutoClose.Never }),
         ): BrowserFixture {
             val store =
                 InMemoryStore().apply {
@@ -260,6 +302,9 @@ class BrowserFixture(
                 pageVisits = pageVisits,
                 maxLiveSessions = maxLiveSessions,
                 bookmarks = bookmarks,
+                privateMemory = privateMemory,
+                privateAvailable = privateAvailable,
+                autoCloseGuard = autoCloseGuard,
             ).apply {
                 selected().fake.simulatePageFinished(url)
                 selected().resetCalls()

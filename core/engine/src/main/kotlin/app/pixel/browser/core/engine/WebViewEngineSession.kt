@@ -31,11 +31,20 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 
-/** [EngineSession] chạy trên System WebView. Phải được dùng trên main thread. */
+/**
+ * [EngineSession] chạy trên System WebView. Phải được dùng trên main thread.
+ *
+ * TODO(E05): `MissingOnRenderProcessGone` (lint của androidx.webkit, bật khi thêm dependency ở spec 016) được tắt
+ * có chủ đích: xử lý render process chết (hủy + tạo lại WebView) là việc crash-safe của E05, không thuộc spec này.
+ */
+@SuppressLint("MissingOnRenderProcessGone")
 class WebViewEngineSession(
     context: Context,
+    privateProfile: String? = null,
+    profileGateway: ProfileGateway = AndroidxProfileGateway,
 ) : EngineSession {
-    private val pixel = PixelWebView(context)
+    override val isPrivate: Boolean = privateProfile != null
+    private val pixel = createPixelWebView(context, privateProfile, profileGateway)
     val webView: WebView = pixel
 
     /** Giá trị WebSettings lúc khởi tạo, để chế độ di động khôi phục đúng (spec 015 AC17). */
@@ -904,4 +913,26 @@ class WebViewEngineSession(
             }
         }
     }
+}
+
+/**
+ * Tạo [PixelWebView]; với [privateProfile] áp profile **ngay** sau khi tạo (trước mọi thao tác khác). Không áp được
+ * → hủy WebView và ném [PrivateUnavailableException] (fail-closed, không rơi về profile mặc định; spec 016 AC6).
+ */
+private fun createPixelWebView(
+    context: Context,
+    privateProfile: String?,
+    gateway: ProfileGateway,
+): PixelWebView {
+    if (privateProfile == null) return PixelWebView(context)
+    if (!gateway.isSupported) throw PrivateUnavailableException("MULTI_PROFILE is not supported")
+    val view = PixelWebView(context).also { it.isPrivate = true }
+    try {
+        gateway.apply(view, privateProfile)
+    } catch (e: RuntimeException) {
+        view.destroy()
+        throw PrivateUnavailableException("Cannot apply private profile: ${e.message}")
+    }
+    view.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+    return view
 }

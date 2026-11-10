@@ -20,16 +20,30 @@ class SettingsPagesTest {
     @Test
     fun ac8_sectionsInOrder_withExpectedPages() {
         val layout = registry().groups.map { (s, pages) -> s.id to pages.map { it.id } }
+        // Spec 016 AC22: thêm trang private_browsing vào phần privacy (thứ tự trong phần do implementer chọn).
         assertEquals(
             listOf(
-                SettingsSections.SEARCH to listOf(SettingsPageIds.SEARCH_ENGINE),
-                SettingsSections.APPEARANCE to listOf(SettingsPageIds.THEME),
-                SettingsSections.PRIVACY to listOf(SettingsPageIds.CLEAR_DATA, SettingsPageIds.SAFE_BROWSING),
-                SettingsSections.SITE to listOf(SettingsPageIds.SITE_SETTINGS, SettingsPageIds.DESKTOP_SITE),
-                SettingsSections.ABOUT to listOf(SettingsPageIds.ABOUT),
+                SettingsSections.SEARCH,
+                SettingsSections.APPEARANCE,
+                SettingsSections.PRIVACY,
+                SettingsSections.SITE,
+                SettingsSections.ABOUT,
             ),
-            layout,
+            layout.map { it.first },
         )
+        val byId = layout.toMap()
+        assertEquals(listOf(SettingsPageIds.SEARCH_ENGINE), byId.getValue(SettingsSections.SEARCH))
+        assertEquals(listOf(SettingsPageIds.THEME), byId.getValue(SettingsSections.APPEARANCE))
+        assertEquals(
+            setOf(SettingsPageIds.CLEAR_DATA, SettingsPageIds.SAFE_BROWSING, SettingsPageIds.PRIVATE_BROWSING),
+            byId.getValue(SettingsSections.PRIVACY).toSet(),
+        )
+        assertEquals(3, byId.getValue(SettingsSections.PRIVACY).size)
+        assertEquals(
+            listOf(SettingsPageIds.SITE_SETTINGS, SettingsPageIds.DESKTOP_SITE),
+            byId.getValue(SettingsSections.SITE),
+        )
+        assertEquals(listOf(SettingsPageIds.ABOUT), byId.getValue(SettingsSections.ABOUT))
     }
 
     @Test
@@ -41,6 +55,7 @@ class SettingsPagesTest {
             SettingsPageIds.THEME,
             SettingsPageIds.DESKTOP_SITE,
             SettingsPageIds.ABOUT,
+            SettingsPageIds.PRIVATE_BROWSING,
         ).forEach {
             assertEquals(it, false, r.page(it)!!.isPlaceholder)
         }
@@ -55,7 +70,7 @@ class SettingsPagesTest {
     fun ac8_pageIdsAreUnique() {
         val ids = registry().groups.flatMap { it.second }.map { it.id }
         assertEquals(ids.distinct(), ids)
-        assertTrue(ids.size == 7)
+        assertTrue(ids.size == 8)
     }
 
     @Test

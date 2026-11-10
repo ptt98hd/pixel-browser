@@ -17,6 +17,9 @@ import app.pixel.browser.core.data.createSettingsDataStore
 import app.pixel.browser.core.data.home.FileHomeConfigStore
 import app.pixel.browser.core.data.home.HomeConfigStore
 import app.pixel.browser.core.data.home.HomeFiles
+import app.pixel.browser.core.data.privacy.DataStorePrivacySettingsStore
+import app.pixel.browser.core.data.privacy.PrivacySettings
+import app.pixel.browser.core.data.privacy.PrivacySettingsStore
 import app.pixel.browser.core.data.search.DataStoreSearchSettingsStore
 import app.pixel.browser.core.data.search.SearchSettings
 import app.pixel.browser.core.data.search.SearchSettingsStore
@@ -24,6 +27,10 @@ import app.pixel.browser.core.data.site.DesktopSiteData
 import app.pixel.browser.core.data.site.DesktopSitePolicy
 import app.pixel.browser.core.data.site.DesktopSiteStore
 import app.pixel.browser.core.data.site.FileDesktopSiteStore
+import app.pixel.browser.core.engine.AndroidxProfileGateway
+import app.pixel.browser.core.engine.EngineSession
+import app.pixel.browser.core.engine.PrivateSpace
+import app.pixel.browser.core.engine.PrivateUnavailableException
 import app.pixel.browser.core.engine.WebViewEngineSession
 import app.pixel.browser.core.history.HistoryRecorder
 import app.pixel.browser.core.history.HistoryRetention
@@ -57,6 +64,14 @@ import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
+/**
+ * Nguồn session gốc của app (spec 016): [privateProfile] != null → session ẩn danh dùng profile đó
+ * (`WebViewEngineSession(ctx, privateProfile)`); null → session thường.
+ */
+fun interface BaseSessionFactory {
+    fun create(privateProfile: String?): EngineSession
+}
+
 /** Phụ thuộc cấp process (DI thủ công tới khi có Hilt). */
 class PixelBrowserApplication : Application() {
     /** `tabs.json` trong `noBackupFilesDir`: không bị Auto Backup/chuyển thiết bị sao lưu (spec 002). */
@@ -81,7 +96,8 @@ class PixelBrowserApplication : Application() {
 
     private val desktopLock = Any()
     private var desktopPolicy: DesktopSitePolicy? = null
-    private var baseSessionFactory = EngineSessionFactory { WebViewEngineSession(MutableContextWrapper(this)) }
+    private var baseSessionFactory =
+        BaseSessionFactory { profile -> WebViewEngineSession(MutableContextWrapper(this), profile) }
 
     /**
      * Spec 015: chính sách desktop site (`filesDir/site/desktop.json`), đọc đồng bộ ở lần truy cập đầu (tab khôi
@@ -127,16 +143,65 @@ class PixelBrowserApplication : Application() {
      * ngay khi tạo. Test thay session gốc bằng [bindBaseSessionFactory].
      */
     val sessionFactory: EngineSessionFactory =
-        EngineSessionFactory {
-            baseSessionFactory.create().also { session ->
+        EngineSessionFactory { isPrivate ->
+            // Fail-closed (spec 016): tab ẩn danh không bao giờ rơi về profile mặc định khi thiếu MULTI_PROFILE.
+            val profile =
+                if (isPrivate) {
+                    privateSpace.acquireProfile()
+                        ?: throw PrivateUnavailableException("Private tabs need WebView multi-profile support")
+                } else {
+                    null
+                }
+            baseSessionFactory.create(profile).also { session ->
                 session.setDesktopSiteResolver { siteKey -> desktopSites.resolve(siteKey) }
             }
         }
 
     /** Spec 015: test thay nguồn session gốc (mặc định `WebViewEngineSession`) bằng Fake. */
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    fun bindBaseSessionFactory(factory: EngineSessionFactory) {
+    fun bindBaseSessionFactory(factory: BaseSessionFactory) {
         baseSessionFactory = factory
+    }
+
+    /** Spec 016: không gian ẩn danh dùng chung (profile WebView). `onCreate` gắn bản thật qua [bindPrivateSpace]. */
+    lateinit var privateSpace: PrivateSpace
+        private set
+
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    fun bindPrivateSpace(space: PrivateSpace) {
+        privateSpace = space
+    }
+
+    private val privacy = OptimisticSetting(PrivacySettings())
+
+    /** Spec 016: cài đặt riêng tư hiện tại (bắt đầu `PrivacySettings()`, cập nhật từ [privacyStore]). */
+    val privacySettings: StateFlow<PrivacySettings> get() = privacy.state
+
+    @Volatile private var privacyStoreRef: PrivacySettingsStore? = null
+
+    val privacyStore: PrivacySettingsStore
+        get() = checkNotNull(privacyStoreRef) { "bindPrivacyStore chưa được gọi" }
+
+    /** Spec 016: gắn [store] làm [privacyStore] và collect vào [privacySettings] trên [scope]. */
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    fun bindPrivacyStore(
+        store: PrivacySettingsStore,
+        scope: CoroutineScope,
+    ) {
+        privacyStoreRef = store
+        privacy.bind(scope, store.settings)
+    }
+
+    /** Spec 016: đổi cài đặt riêng tư lạc quan (cùng mẫu [updateSearch]); `IOException` khi ghi chỉ được log. */
+    @MainThread
+    fun updatePrivacy(transform: (PrivacySettings) -> PrivacySettings) {
+        val store = privacyStore
+        privacy.update(
+            ioScope,
+            transform,
+            write = { next -> store.update { next } },
+            onWriteFailure = { Log.w(TAG, "Không ghi được cài đặt riêng tư", it) },
+        )
     }
 
     /** Spec 012: kho lịch sử (`history.db`); gắn qua [bindHistoryStore]. */
@@ -258,6 +323,8 @@ class PixelBrowserApplication : Application() {
             }
         bindThemeStore(DataStoreThemeSettingsStore(settingsDataStore), ioScope)
         bindSearchStore(DataStoreSearchSettingsStore(settingsDataStore), ioScope)
+        bindPrivacyStore(DataStorePrivacySettingsStore(settingsDataStore), ioScope)
+        bindPrivateSpace(PrivateSpace(AndroidxProfileGateway))
     }
 
     /** Spec 009: `TRIM_MEMORY_BACKGROUND` trở lên xóa cache thumbnail trong bộ nhớ (đĩa giữ). */

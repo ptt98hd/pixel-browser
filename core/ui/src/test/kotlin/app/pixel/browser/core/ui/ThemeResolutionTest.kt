@@ -27,3 +27,21 @@ class ThemeResolutionTest {
         }
     }
 }
+
+/** Spec 016 AC21 – tab ẩn danh ép giao diện tối. */
+class PrivateThemeResolutionTest {
+    @Test
+    fun ac21_private_isDark_forEveryModeAndSystem() {
+        ThemeMode.entries.forEach { mode ->
+            listOf(false, true).forEach { systemDark ->
+                assertTrue("$mode/$systemDark", resolveDarkTheme(mode, systemDark, private = true))
+            }
+        }
+    }
+
+    @Test
+    fun ac21_notPrivate_keepsSpec011Behaviour() {
+        assertFalse(resolveDarkTheme(ThemeMode.Light, systemDark = true, private = false))
+        assertTrue(resolveDarkTheme(ThemeMode.Dark, systemDark = false, private = false))
+    }
+}

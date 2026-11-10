@@ -28,7 +28,7 @@ Trạng thái: ⬜ chưa làm · 🟨 đang làm · ✅ xong. Mỗi feature có 
 | B03 | Downloads: parallel multi-segment, resume/pause, notification, quản lý file, cài APK an toàn (spec 019) | 🟨 |
 | B04 | Find in page (spec 015) | ✅ |
 | B05 | Request desktop site (toàn cục + theo site) (spec 015; trang cài đặt toàn cục dùng khung của spec 014) | ✅ |
-| B06 | Incognito (cookie/cache/history tách biệt) (spec 016) | 🟨 |
+| B06 | Incognito (cookie/cache/history tách biệt) (spec 016; phần JVM/Robolectric xong, kiểm chứng máy thật nằm ở E05) | ✅ |
 | B07 | Site settings: cookies, JS, popup, quyền theo site, zoom/cỡ chữ | ⬜ |
 | B08 | Search engine (Google, DuckDuckGo, Brave, Bing, tùy chỉnh) (spec 014, kèm khung Cài đặt dùng chung cho B07/B12/B14) | ✅ |
 | B09 | Share link/page, copy link, add to home screen, print/save PDF (spec 018) | 🟨 |
@@ -66,7 +66,7 @@ Trạng thái: ⬜ chưa làm · 🟨 đang làm · ✅ xong. Mỗi feature có 
 | E02 | Keystore release cố định + workflow release ký APK, verify bằng apksigner, cài thử emulator | ✅ |
 | E03 | Split ABI + universal APK, versionCode theo tag | ✅ |
 | E04 | Metadata F-Droid (fastlane, flavor fdroid không có thư viện non-free), reproducible build | ⬜ |
-| E05 | Hiệu năng (startup, memory nhiều tab), crash-safe, không telemetry; WebView lười cho tab home (không tạo WebView khi chưa có trang, spec 010); PullToRefreshInstrumentedTest + kiểm chứng predictive back/overscroll trên máy thật (spec 008); FindInPageInstrumentedTest + DesktopSiteInstrumentedTest (máy thật, spec 015) | ⬜ |
+| E05 | Hiệu năng (startup, memory nhiều tab), crash-safe, không telemetry; WebView lười cho tab home (không tạo WebView khi chưa có trang, spec 010); PullToRefreshInstrumentedTest + kiểm chứng predictive back/overscroll trên máy thật (spec 008); FindInPageInstrumentedTest + DesktopSiteInstrumentedTest (máy thật, spec 015); spec 016 trên máy thật: ProfileSupportInstrumentedTest + PrivateProfileInstrumentedTest (cách ly cookie/storage/cache/IndexedDB giữa profile, `setProfile` ngay sau tạo WebView, `deleteProfile` khi còn WebView, hai profile ẩn danh song song), FLAG_SECURE chặn ảnh chụp/Recents/ghi màn hình, autofill không đề nghị lưu mật khẩu (Bitwarden/Google), Gboard chế độ ẩn danh, kill process rồi mở lại để quét profile `private_*` cũ (`du app_webview`), nhánh fail-closed trên WebView cũ không có MULTI_PROFILE | ⬜ |
 | E06 | Docs: README, CONTRIBUTING, PRIVACY, changelog tự sinh | ⬜ |
 
 ## Milestone → feature

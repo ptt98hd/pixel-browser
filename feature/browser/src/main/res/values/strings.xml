@@ -114,4 +114,24 @@
     <string name="browser_find_position">Result %1$d of %2$d</string>
     <string name="browser_desktop_site">Desktop site</string>
     <string name="browser_desktop_indicator">Viewing desktop site</string>
+    <!-- Spec 016: tab ẩn danh -->
+    <string name="browser_new_private_tab">Private tab</string>
+    <string name="browser_private_unavailable_hint">Update Android System WebView to use private tabs</string>
+    <string name="browser_message_private_unavailable">Private tabs need a newer Android System WebView. Update it to use them.</string>
+    <string name="browser_private_indicator">Private tab</string>
+    <string name="browser_private_landing_title">You are browsing privately</string>
+    <string name="browser_private_landing_body">Cookies, site data and cache of private tabs are kept apart from your normal tabs and deleted when you close the last private tab. No history, thumbnails or saved tabs are kept.</string>
+    <string name="browser_private_landing_search">Search or type a web address</string>
+    <string name="browser_private_guaranteed_title">What stays private</string>
+    <string name="browser_private_guaranteed">Cookies, site storage, cache and permissions are separate from normal tabs. Nothing is added to history, and your keyboard is asked not to learn from what you type.</string>
+    <string name="browser_private_not_guaranteed_title">What is not hidden</string>
+    <string name="browser_private_not_guaranteed">Your network provider, employer and the sites you visit can still see your activity. Downloaded files stay on your device, and bookmarks you add are saved.</string>
+    <string name="browser_tabs_group_normal">Tabs</string>
+    <string name="browser_tabs_group_private">Private</string>
+    <string name="browser_private_empty">No private tabs</string>
+    <string name="browser_private_close_all">Close private tabs</string>
+    <string name="browser_close_private_title">Close all private tabs?</string>
+    <string name="browser_close_private_message">Private tabs and their data are deleted. This can’t be undone.</string>
+    <string name="browser_close_private_confirm">Close private tabs</string>
+    <string name="browser_private_download_warning">The downloaded file is saved on this device and is not deleted when you close private tabs. Its name and address may also appear in the system download manager and notifications.</string>
 </resources>

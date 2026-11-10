@@ -37,7 +37,7 @@ class CountingSession(
 class CountingSessionFactory : EngineSessionFactory {
     val created = mutableListOf<CountingSession>()
 
-    override fun create(): EngineSession = CountingSession().also { created += it }
+    override fun create(isPrivate: Boolean): EngineSession = CountingSession().also { created += it }
 }
 
 /** Spec 010 – AC1–AC5: home là trạng thái của tab trong [TabManager] (JVM thuần). */

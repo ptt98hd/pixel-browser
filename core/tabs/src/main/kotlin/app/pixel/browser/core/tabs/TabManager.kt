@@ -26,6 +26,8 @@ class TabManager(
     private val sessionFactory: EngineSessionFactory,
     private val store: TabSnapshotStore,
     val maxLiveSessions: Int = DEFAULT_MAX_LIVE_SESSIONS,
+    /** Gọi khi tab ẩn danh cuối cùng biến mất (sau khi session của nó đã đóng; spec 016). */
+    private val onPrivateTabsEmpty: () -> Unit = {},
 ) {
     /** Trang nằm dưới home (spec 010): Back từ home quay lại trang này mà không reload. */
     private class PageUnderHome(
@@ -93,6 +95,10 @@ class TabManager(
     private val _selectedTabId = MutableStateFlow<String?>(null)
     val selectedTabId: StateFlow<String?> = _selectedTabId
 
+    /** Số tab ẩn danh (kể cả tab đã bị discard); về 0 thì [onPrivateTabsEmpty] được gọi (spec 016). */
+    private val _privateTabCount = MutableStateFlow(0)
+    val privateTabCount: StateFlow<Int> = _privateTabCount
+
     init {
         require(maxLiveSessions >= 1) { "maxLiveSessions must be >= 1, was $maxLiveSessions" }
         restore(readStore())
@@ -138,10 +144,13 @@ class TabManager(
         publish()
     }
 
-    fun closeTab(id: String) {
+    /** true nếu có thể hoàn tác bằng [undoClose]. */
+    fun closeTab(id: String): Boolean {
         val index = entries.indexOfFirst { it.id == id }
-        if (index < 0) return
+        if (index < 0) return false
         val entry = entries.removeAt(index)
+        // Tab ẩn danh cuối: không hoàn tác được (publish() dọn luôn mọi tab ẩn danh khỏi ngăn xếp undo).
+        val lastPrivate = entry.tab.isPrivate && entries.none { it.tab.isPrivate }
         val session = entry.session
         val state = entry.persistableState()
         pushClosed(entry, index, state, wasSelected = id == _selectedTabId.value)
@@ -152,6 +161,26 @@ class TabManager(
             id == _selectedTabId.value -> activate(entries[index.coerceAtMost(entries.lastIndex)])
         }
         publish()
+        return !lastPrivate
+    }
+
+    /**
+     * Đóng mọi tab ẩn danh (không hoàn tác được); trả số tab đã đóng (spec 016). Tab đang chọn bị đóng → chọn tab
+     * dùng gần nhất còn lại, hoặc tạo một tab home thường nếu không còn tab nào.
+     */
+    fun closePrivateTabs(): Int {
+        val doomed = entries.filter { it.tab.isPrivate }
+        if (doomed.isEmpty()) return 0
+        val selectedGone = doomed.any { it.id == _selectedTabId.value }
+        entries.removeAll(doomed)
+        doomed.forEach { it.session?.close() }
+        if (entries.isEmpty()) {
+            activateAutoHome()
+        } else if (selectedGone) {
+            activate(entries.maxBy { it.lastUsed })
+        }
+        publish()
+        return doomed.size
     }
 
     /**
@@ -326,6 +355,16 @@ class TabManager(
      */
     fun close() {
         entries.forEach(::discard)
+        // Tab ẩn danh không sống qua việc đóng màn hình (không savedState, không khôi phục; spec 016 AC11).
+        val selectedGone = entries.any { it.tab.isPrivate && it.id == _selectedTabId.value }
+        entries.removeAll { it.tab.isPrivate }
+        if (entries.isEmpty()) {
+            val home = Entry(Tab(newId(), HOME_URL), lastUsed = ++useCounter)
+            entries += home
+            _selectedTabId.value = home.id
+        } else if (selectedGone) {
+            _selectedTabId.value = entries.maxBy { it.lastUsed }.id
+        }
         closed.clear()
         publish()
     }
@@ -374,7 +413,15 @@ class TabManager(
         load: Boolean = url != HOME_URL,
     ): Entry {
         val entry = Entry(Tab(newId(), url, isPrivate = isPrivate), lastUsed = ++useCounter)
-        entry.session = sessionFactory.create().also { if (load) it.loadUrl(url) }
+        entry.session =
+            try {
+                sessionFactory.create(isPrivate).also { if (load) it.loadUrl(url) }
+            } catch (e: RuntimeException) {
+                // Factory đã xin profile ẩn danh nhưng không tạo được session: nếu chưa có tab ẩn danh nào thì dọn
+                // profile đó ngay (chuỗi onPrivateTabsEmpty), không để dữ liệu mồ côi tới lần quét sau.
+                if (isPrivate && entries.none { it.tab.isPrivate }) onPrivateTabsEmpty()
+                throw e
+            }
         return entry
     }
 
@@ -396,7 +443,7 @@ class TabManager(
         entry: Entry,
         loadCurrent: Boolean = true,
     ): EngineSession {
-        val session = sessionFactory.create()
+        val session = sessionFactory.create(entry.tab.isPrivate)
         val restored = entry.savedState?.let(session::restoreState) ?: false
         // Chỉ tải lại URL web; HOME_URL hoặc URL lạ (file:, javascript:, ...) từ snapshot thì để trống.
         if (!restored && loadCurrent && isValidWebUrl(entry.tab.url)) session.loadUrl(entry.tab.url)
@@ -458,7 +505,18 @@ class TabManager(
 
     private fun publish() {
         _tabs.value = entries.map { it.syncFromSession() }
+        val count = entries.count { it.tab.isPrivate }
+        _privateTabCount.value = count
+        if (count == 0 && hadPrivateTabs) {
+            closed.removeAll { it.tab.isPrivate }
+            hadPrivateTabs = false
+            onPrivateTabsEmpty()
+        } else if (count > 0) {
+            hadPrivateTabs = true
+        }
     }
+
+    private var hadPrivateTabs = false
 
     companion object {
         const val DEFAULT_MAX_LIVE_SESSIONS = 6

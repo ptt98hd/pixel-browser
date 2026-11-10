@@ -67,4 +67,12 @@ data class BrowserUiState(
     val canToggleDesktopSite: Boolean = false,
     /** Trang đang xem ở chế độ máy tính (spec 015 B05). */
     val isDesktopSite: Boolean = false,
+    /** Tab đang chọn là tab ẩn danh (spec 016). */
+    val selectedIsPrivate: Boolean = false,
+    /** Có thể mở tab ẩn danh (`MULTI_PROFILE` được hỗ trợ; spec 016). */
+    val canOpenPrivate: Boolean = false,
+    /** Trình chuyển tab đang hiển thị nhóm ẩn danh (spec 016 AC19). */
+    val switcherShowsPrivate: Boolean = false,
+    /** Lần đóng tab gần nhất hoàn tác được; false khi đóng tab ẩn danh cuối (spec 016 AC20). */
+    val lastCloseUndoable: Boolean = true,
 )

@@ -9,10 +9,12 @@ import app.pixel.browser.core.bookmarks.BookmarkRepository
 import app.pixel.browser.core.bookmarks.BookmarkResult
 import app.pixel.browser.core.bookmarks.BookmarkRules
 import app.pixel.browser.core.bookmarks.DeletedTree
+import app.pixel.browser.core.data.privacy.PrivateAutoClose
 import app.pixel.browser.core.data.site.DesktopSitePolicy
 import app.pixel.browser.core.engine.EngineRequest
 import app.pixel.browser.core.engine.EngineResponse
 import app.pixel.browser.core.engine.EngineSession
+import app.pixel.browser.core.engine.PrivateUnavailableException
 import app.pixel.browser.core.engine.SitePermission
 import app.pixel.browser.core.engine.isSecureOrigin
 import app.pixel.browser.core.engine.isValidWebUrl
@@ -91,6 +93,9 @@ object BrowserMessages {
 
     /** Đã xóa dấu trang từ hộp thoại sửa; snackbar có nút "Hoàn tác" (spec 013 AC20). */
     const val BOOKMARK_REMOVED = "bookmark_removed"
+
+    /** Không mở được tab ẩn danh vì WebView không hỗ trợ `MULTI_PROFILE` (spec 016 AC12). */
+    const val PRIVATE_UNAVAILABLE = "private_unavailable"
 }
 
 /**
@@ -120,7 +125,113 @@ class BrowserViewModel(
     private val bookmarks: BookmarkRepository? = null,
     /** Chính sách trang web máy tính theo site (spec 015); null → bật/tắt chỉ đổi session, không lưu. */
     private val desktopSites: DesktopSitePolicy? = null,
+    /** Có tạo được tab ẩn danh không (spec 016); mặc định false (fail-closed). */
+    private val privateAvailable: () -> Boolean = { false },
+    /** Bộ nhớ quyền theo site **riêng** của tab ẩn danh, xóa khi hết tab ẩn danh (spec 016 AC13). */
+    private val privateMemory: SitePermissionMemory = SitePermissionMemory(),
+    /** Tự đóng tab ẩn danh khi quay lại app sau khi rời đi (spec 016 AC15). */
+    private val privateAutoClose: PrivateAutoCloseGuard = PrivateAutoCloseGuard({ 0L }, { PrivateAutoClose.Never }),
 ) : ViewModel() {
+    // --- Spec 016: tab ẩn danh ---
+
+    /** Id mọi tab ẩn danh đã thấy kể từ lần không gian ẩn danh rỗng gần nhất (để purge thumbnail khi hết). */
+    private val privateTabIds = mutableSetOf<String>()
+    private var switcherShowsPrivate = false
+
+    /** Kết quả truy vấn gần nhất; chưa truy vấn → false (không gọi `MULTI_PROFILE` trên đường khởi động). */
+    private var canOpenPrivate = false
+
+    /** Menu/trình chuyển tab sắp hiện mục ẩn danh: truy vấn khả năng một lần (rẻ vì gateway tự cache). */
+    fun onResolvePrivateAvailability() {
+        canOpenPrivate = privateAvailable()
+        recompute()
+    }
+
+    private var lastCloseUndoable = true
+
+    /** Tab thường mới dù tab đang chọn là tab ẩn danh (FAB của trình chuyển tab ở nhóm thường; spec 016 AC19). */
+    fun onNewNormalTab() {
+        openNewTab(HOME_URL, isPrivate = false)
+        recompute()
+    }
+
+    /** Mở tab home ẩn danh và chọn nó; không khả dụng → [BrowserMessages.PRIVATE_UNAVAILABLE]. */
+    fun onNewPrivateTab() {
+        if (!openNewTab(HOME_URL, isPrivate = true)) message = BrowserMessages.PRIVATE_UNAVAILABLE
+        recompute()
+    }
+
+    /** Đóng mọi tab ẩn danh (không hoàn tác được). */
+    fun onClosePrivateTabs() {
+        val ids =
+            tabManager.tabs.value
+                .filter { it.isPrivate }
+                .map { it.id }
+        if (ids.isEmpty()) return
+        stopEditing()
+        exitFullscreen(current())
+        closeFind()
+        privateTabIds += ids
+        tabManager.closePrivateTabs()
+        ids.forEach {
+            thumbnails.remove(it)
+            pageVisits.forgetTab(it)
+        }
+        lastCloseUndoable = false
+        recompute()
+    }
+
+    /** Trình chuyển tab đổi nhóm hiển thị. */
+    fun onSwitcherGroupChange(showPrivate: Boolean) {
+        switcherShowsPrivate = showPrivate
+        recompute()
+    }
+
+    /** Ứng dụng rời nền trước (Activity `onStop`): ghi mốc cho [PrivateAutoCloseGuard]. */
+    fun onAppBackground(isChangingConfigurations: Boolean) {
+        privateAutoClose.onBackground(tabManager.privateTabCount.value > 0, isChangingConfigurations)
+    }
+
+    /** Quay lại app: đóng tab ẩn danh nếu [PrivateAutoCloseGuard] yêu cầu. */
+    fun onForegroundReturn() {
+        if (privateAutoClose.onForeground()) onClosePrivateTabs()
+    }
+
+    /** `TabManager.onPrivateTabsEmpty`: xóa thumbnail ẩn danh khỏi bộ nhớ/đĩa và [privateMemory]. */
+    fun onPrivateTabsEmpty() {
+        thumbnails.purge(privateTabIds.toSet())
+        privateTabIds.clear()
+        privateMemory.clear()
+    }
+
+    /** Mở tab mới [url] và chọn nó; false nếu không tạo được tab ẩn danh (fail-closed). */
+    private fun openNewTab(
+        url: String,
+        isPrivate: Boolean,
+    ): Boolean {
+        if (isPrivate) {
+            canOpenPrivate = privateAvailable()
+            if (!canOpenPrivate) return false
+        }
+        stopEditing()
+        captureCurrentThumbnail()
+        exitFullscreen(current())
+        return try {
+            tabManager.openTab(url, isPrivate = isPrivate)
+            true
+        } catch (_: PrivateUnavailableException) {
+            false
+        }
+    }
+
+    private fun selectedIsPrivate(): Boolean {
+        val id = tabManager.selectedTabId.value
+        return tabManager.tabs.value.any { it.id == id && it.isPrivate }
+    }
+
+    private fun memoryFor(session: EngineSession): SitePermissionMemory =
+        if (session.isPrivate) privateMemory else permissionMemory
+
     // --- Spec 015 B04: tìm trong trang ---
 
     /** Thanh tìm đang mở cho session/tab/URL này (null = đóng); chỉ một thanh toàn cục, không nhớ qua tab. */
@@ -423,11 +534,9 @@ class BrowserViewModel(
         recompute()
     }
 
+    /** Tab mới cùng nhóm với tab đang chọn (từ tab ẩn danh → tab ẩn danh; spec 016 AC12). */
     fun onNewTab() {
-        stopEditing()
-        captureCurrentThumbnail()
-        exitFullscreen(current())
-        tabManager.openTab(HOME_URL)
+        if (!openNewTab(HOME_URL, selectedIsPrivate())) message = BrowserMessages.PRIVATE_UNAVAILABLE
         recompute()
     }
 
@@ -495,10 +604,7 @@ class BrowserViewModel(
     /** Mở [url] ở tab mới và chọn nó (chỉ URL web hợp lệ; spec 012). */
     fun onOpenUrlInNewTab(url: String) {
         if (!isValidWebUrl(url)) return
-        stopEditing()
-        captureCurrentThumbnail()
-        exitFullscreen(current())
-        tabManager.openTab(url)
+        if (!openNewTab(url, selectedIsPrivate())) message = BrowserMessages.PRIVATE_UNAVAILABLE
         recompute()
     }
 
@@ -544,6 +650,11 @@ class BrowserViewModel(
         stopEditing()
         exitFullscreen(current())
         val old = tabManager.tabs.value.map { it.id }
+        privateTabIds +=
+            tabManager.tabs.value
+                .filter { it.isPrivate }
+                .map { it.id }
+        lastCloseUndoable = tabManager.tabs.value.any { !it.isPrivate }
         tabManager.closeAllTabs()
         old.forEach {
             thumbnails.remove(it)
@@ -700,7 +811,7 @@ class BrowserViewModel(
                 .firstOrNull { it.id == requestId } ?: return
         val plan = permissionPlan(session, request)
         if (plan.inFlight) return
-        if (plan.rememberable) plan.ask.forEach { permissionMemory.set(request.origin, it, allow) }
+        if (plan.rememberable) plan.ask.forEach { memoryFor(session).set(request.origin, it, allow) }
         grantPermissions(session, request, plan, if (allow) plan.remembered + plan.ask else plan.remembered)
         recompute()
     }
@@ -850,7 +961,7 @@ class BrowserViewModel(
             val rememberable = request.origin == originOf(session.state.value.url)
             val remembered =
                 request.permissions.associateWith {
-                    if (rememberable) permissionMemory.get(request.origin, it) else null
+                    if (rememberable) memoryFor(session).get(request.origin, it) else null
                 }
             PermissionPlan(
                 ask = remembered.filterValues { it == null }.keys,
@@ -911,7 +1022,7 @@ class BrowserViewModel(
     private fun unusedHomeTab(): String? {
         val id = tabManager.selectedTabId.value ?: return null
         val tab = tabManager.tabs.value.firstOrNull { it.id == id } ?: return null
-        return id.takeIf { tab.isHome && !tab.backToHome && !tabManager.canNavigateBack(id) }
+        return id.takeIf { tab.isHome && !tab.isPrivate && !tab.backToHome && !tabManager.canNavigateBack(id) }
     }
 
     /**
@@ -1014,7 +1125,8 @@ class BrowserViewModel(
     }
 
     private fun closeAndForget(id: String) {
-        tabManager.closeTab(id)
+        if (tabManager.tabs.value.any { it.id == id && it.isPrivate }) privateTabIds += id
+        lastCloseUndoable = tabManager.closeTab(id)
         pageVisits.forgetTab(id)
     }
 
@@ -1104,6 +1216,8 @@ class BrowserViewModel(
                     )
                 }
             }
+        val selectedPrivate = tabs.any { it.id == selectedId && it.isPrivate }
+        privateTabIds += tabs.filter { it.isPrivate }.map { it.id }
         val url = if (isHome) "" else st?.url ?: tabs.firstOrNull { it.id == selectedId }?.url.orEmpty()
         val canBookmark = bookmarks != null && !isHome && isValidWebUrl(url)
         trackBookmark(url.takeIf { canBookmark })
@@ -1133,7 +1247,7 @@ class BrowserViewModel(
                 securityState = st?.securityState ?: BrowserUiState().securityState,
                 canGoBack = canGoBack,
                 canGoForward = st?.canGoForward == true,
-                tabCount = tabs.size,
+                tabCount = tabs.count { it.isPrivate == selectedPrivate },
                 tabs = tabs,
                 selectedTabId = selectedId,
                 isEditingUrl = isEditing,
@@ -1153,6 +1267,10 @@ class BrowserViewModel(
                 find = findUiState(session),
                 canToggleDesktopSite = canToggleDesktop,
                 isDesktopSite = st?.isDesktopSite == true,
+                selectedIsPrivate = selectedPrivate,
+                canOpenPrivate = canOpenPrivate,
+                switcherShowsPrivate = switcherShowsPrivate,
+                lastCloseUndoable = lastCloseUndoable,
             )
     }
 

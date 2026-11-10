@@ -7,6 +7,7 @@ import app.pixel.browser.feature.settings.AboutPage
 import app.pixel.browser.feature.settings.AppInfo
 import app.pixel.browser.feature.settings.AppearancePage
 import app.pixel.browser.feature.settings.DesktopSiteSettingsPage
+import app.pixel.browser.feature.settings.PrivateBrowsingPage
 import app.pixel.browser.feature.settings.R
 import app.pixel.browser.feature.settings.SearchEnginePage
 import app.pixel.browser.feature.settings.SettingsPage
@@ -31,6 +32,7 @@ fun settingsRegistry(
                     searchEnginePage(app),
                     appearancePage(app),
                     desktopSitePage(app),
+                    privateBrowsingPage(app),
                     aboutPage(info),
                 ),
     )
@@ -70,6 +72,22 @@ private fun desktopSitePage(app: PixelBrowserApplication) =
         order = 1,
         title = { stringResource(R.string.settings_page_desktop_site) },
         content = { DesktopSiteSettingsPage(app.desktopSites) },
+    )
+
+private fun privateBrowsingPage(app: PixelBrowserApplication) =
+    SettingsPage(
+        id = SettingsPageIds.PRIVATE_BROWSING,
+        sectionId = SettingsSections.PRIVACY,
+        order = 2,
+        title = { stringResource(R.string.settings_page_private_browsing) },
+        content = {
+            val settings by app.privacySettings.collectAsState()
+            PrivateBrowsingPage(
+                settings,
+                privateAvailable = app.privateSpace.isAvailable,
+                onChange = { next -> app.updatePrivacy { next } },
+            )
+        },
     )
 
 private fun aboutPage(info: AppInfo) =

@@ -25,11 +25,14 @@ import app.pixel.browser.core.data.ThemeSettings
 fun resolveDarkTheme(
     mode: ThemeMode,
     systemDark: Boolean,
+    /** Tab ẩn danh (spec 016 AC21): luôn tối, bỏ qua [mode] và hệ thống. */
+    private: Boolean = false,
 ): Boolean =
-    when (mode) {
-        ThemeMode.System -> systemDark
-        ThemeMode.Light -> false
-        ThemeMode.Dark -> true
+    when {
+        private -> true
+        mode == ThemeMode.System -> systemDark
+        mode == ThemeMode.Light -> false
+        else -> true
     }
 
 /** Color scheme: dynamic (hình nền) nếu [dynamicColor], ngược lại [PixelColors] (spec 011 AC6). */
@@ -53,6 +56,8 @@ fun pixelColorScheme(
 @Composable
 fun PixelTheme(
     settings: ThemeSettings = ThemeSettings(),
+    /** Tab ẩn danh được chọn (spec 016 AC21): dùng [PrivateColorScheme] cố định, bỏ qua dynamic color/mode. */
+    private: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
@@ -60,7 +65,7 @@ fun PixelTheme(
     val reducedMotion = rememberReducedMotion(context)
     CompositionLocalProvider(LocalReducedMotion provides reducedMotion) {
         MaterialTheme(
-            colorScheme = pixelColorScheme(context, dark, settings.dynamicColor),
+            colorScheme = if (private) PrivateColorScheme else pixelColorScheme(context, dark, settings.dynamicColor),
             shapes = PixelShapes,
             typography = PixelTypography,
             content = content,

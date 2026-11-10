@@ -113,4 +113,24 @@
     <string name="browser_find_position">Kết quả %1$d trên %2$d</string>
     <string name="browser_desktop_site">Trang web máy tính</string>
     <string name="browser_desktop_indicator">Đang xem trang máy tính</string>
+    <!-- Spec 016: tab ẩn danh -->
+    <string name="browser_new_private_tab">Tab ẩn danh</string>
+    <string name="browser_private_unavailable_hint">Cập nhật Android System WebView để dùng tab ẩn danh</string>
+    <string name="browser_message_private_unavailable">Tab ẩn danh cần Android System WebView mới hơn. Hãy cập nhật để dùng.</string>
+    <string name="browser_private_indicator">Tab ẩn danh</string>
+    <string name="browser_private_landing_title">Bạn đang duyệt ẩn danh</string>
+    <string name="browser_private_landing_body">Cookie, dữ liệu trang và bộ đệm của tab ẩn danh được tách khỏi tab thường và bị xóa khi đóng tab ẩn danh cuối cùng. Không lưu lịch sử, ảnh thu nhỏ hay tab đã lưu.</string>
+    <string name="browser_private_landing_search">Tìm kiếm hoặc nhập địa chỉ web</string>
+    <string name="browser_private_guaranteed_title">Những gì được giữ riêng tư</string>
+    <string name="browser_private_guaranteed">Cookie, bộ nhớ trang, bộ đệm và quyền được tách khỏi tab thường. Không có gì được thêm vào lịch sử và bàn phím được đề nghị không học từ nội dung bạn gõ.</string>
+    <string name="browser_private_not_guaranteed_title">Những gì không được che</string>
+    <string name="browser_private_not_guaranteed">Nhà mạng, cơ quan và các trang web bạn truy cập vẫn thấy hoạt động của bạn. Tệp đã tải xuống vẫn ở trên thiết bị và dấu trang bạn thêm vẫn được lưu.</string>
+    <string name="browser_tabs_group_normal">Tab</string>
+    <string name="browser_tabs_group_private">Ẩn danh</string>
+    <string name="browser_private_empty">Không có tab ẩn danh</string>
+    <string name="browser_private_close_all">Đóng tab ẩn danh</string>
+    <string name="browser_close_private_title">Đóng tất cả tab ẩn danh?</string>
+    <string name="browser_close_private_message">Tab ẩn danh và dữ liệu của chúng sẽ bị xóa. Không thể hoàn tác.</string>
+    <string name="browser_close_private_confirm">Đóng tab ẩn danh</string>
+    <string name="browser_private_download_warning">Tệp tải về được lưu trên thiết bị và không bị xóa khi đóng tab ẩn danh. Tên tệp và địa chỉ cũng có thể hiện trong trình quản lý tải xuống và thông báo của hệ thống.</string>
 </resources>

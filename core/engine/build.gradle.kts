@@ -22,6 +22,7 @@ android {
 
 dependencies {
     api(libs.kotlinx.coroutines.core)
+    implementation(libs.androidx.webkit)
 
     testImplementation(testFixtures(project(":core:engine")))
     testImplementation(libs.junit)

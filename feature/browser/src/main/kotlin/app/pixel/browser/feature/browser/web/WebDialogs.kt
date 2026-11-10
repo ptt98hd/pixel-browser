@@ -63,6 +63,8 @@ fun EngineRequestHost(
     onPermissionDecision: (tabId: String, requestId: Long, allow: Boolean) -> Unit,
     onFileChooserUnavailable: () -> Unit,
     onDownloadFailed: () -> Unit,
+    /** Tab hiện tại là tab ẩn danh: hộp thoại tải xuống có cảnh báo (spec 016 AC14). */
+    isPrivate: Boolean = false,
 ) {
     if (tabId == null || request == null) return
     val context = LocalContext.current
@@ -87,7 +89,11 @@ fun EngineRequestHost(
             }
 
             is EngineRequest.Download -> {
-                DownloadDialog(request, onFailed = onDownloadFailed) { respond(EngineResponse.Dismiss()) }
+                DownloadDialog(
+                    request,
+                    onFailed = onDownloadFailed,
+                    isPrivate = isPrivate,
+                ) { respond(EngineResponse.Dismiss()) }
             }
 
             is EngineRequest.FileChooser -> {
@@ -312,6 +318,7 @@ fun HttpAuthDialog(
 fun DownloadDialog(
     request: EngineRequest.Download,
     onFailed: () -> Unit = {},
+    isPrivate: Boolean = false,
     onDone: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -333,6 +340,14 @@ fun DownloadDialog(
                 if (size != null) Text(size)
                 val host = displayHost(request.url)
                 if (host.isNotEmpty()) Text(host, style = MaterialTheme.typography.bodySmall)
+                if (isPrivate) {
+                    Text(
+                        stringResource(R.string.browser_private_download_warning),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.testTag(BrowserTestTags.DOWNLOAD_PRIVATE_WARNING),
+                    )
+                }
             }
         },
         confirmButton = {

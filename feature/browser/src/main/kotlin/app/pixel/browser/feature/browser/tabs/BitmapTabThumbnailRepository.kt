@@ -62,7 +62,7 @@ class BitmapTabThumbnailRepository(
     }
 
     override fun remove(tabId: String) {
-        // TODO(B06): khi thoát ẩn danh, xóa bitmap của các tab ẩn danh đã đóng khỏi bộ nhớ (hiện giữ để undo).
+        // Bitmap trong bộ nhớ giữ lại để hoàn tác; tab ẩn danh được dọn bằng [purge] khi hết tab ẩn danh.
         scope.launch { fileOf(tabId)?.delete() }
     }
 
@@ -82,6 +82,13 @@ class BitmapTabThumbnailRepository(
         scope.launch {
             dir.listFiles().orEmpty().forEach { f -> if (f.name.endsWith(EXT) || f.name.endsWith(TMP_EXT)) f.delete() }
         }
+    }
+
+    override fun purge(tabIds: Set<String>) {
+        if (tabIds.isEmpty()) return
+        synchronized(cache) { tabIds.forEach(cache::remove) }
+        version.intValue++
+        scope.launch { tabIds.forEach { fileOf(it)?.delete() } }
     }
 
     /** Bộ nhớ trước, miss thì đọc đĩa trên `io`. */

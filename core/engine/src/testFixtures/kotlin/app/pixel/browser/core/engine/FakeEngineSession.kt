@@ -17,7 +17,9 @@ import java.io.IOException
 enum class ScrollCommand { Top, Bottom }
 
 /** Engine giả chạy trên JVM, tuân thủ cùng hợp đồng với [WebViewEngineSession]. */
-class FakeEngineSession : EngineSession {
+class FakeEngineSession(
+    override val isPrivate: Boolean = false,
+) : EngineSession {
     private val _state = MutableStateFlow(EngineState())
     override val state: StateFlow<EngineState> = _state
 

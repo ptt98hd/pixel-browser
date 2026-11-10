@@ -10,6 +10,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -22,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.toggleableState
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
@@ -53,6 +55,8 @@ fun BrowserMenu(
     canToggleDesktopSite: Boolean = false,
     isDesktopSite: Boolean = false,
     onToggleDesktopSite: () -> Unit = {},
+    canOpenPrivate: Boolean = false,
+    onNewPrivateTab: () -> Unit = {},
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         DropdownMenuItem(
@@ -65,6 +69,19 @@ fun BrowserMenu(
             text = { Text(stringResource(R.string.browser_new_tab)) },
             onClick = onNewTab,
             leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null) },
+            // Tab ẩn danh nằm cùng hàng với "Tab mới" để menu không dài thêm (vẫn vừa màn hình nhỏ).
+            trailingIcon = {
+                val label = stringResource(R.string.browser_new_private_tab)
+                val unavailable = stringResource(R.string.browser_private_unavailable_hint)
+                IconButton(
+                    onClick = onNewPrivateTab,
+                    enabled = canOpenPrivate,
+                    modifier =
+                        Modifier
+                            .testTag(BrowserTestTags.MENU_NEW_PRIVATE_TAB)
+                            .semantics { if (!canOpenPrivate) stateDescription = unavailable },
+                ) { Icon(PrivateIcon, contentDescription = label) }
+            },
             modifier = Modifier.testTag(BrowserTestTags.MENU_NEW_TAB),
         )
         DropdownMenuItem(
